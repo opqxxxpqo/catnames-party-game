@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>猫咪代号</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="topbar">
+        <div class="brand-lockup">
+          <p class="eyebrow">局域网联机派对游戏</p>
+          <h1>猫咪代号</h1>
+        </div>
+        <div class="room-badge">
+          <span>房间码</span>
+          <strong id="roomCode">----</strong>
+        </div>
+        <p id="toast" class="toast" role="status"></p>
+      </section>
+
+      <section id="connectScreen" class="screen">
+        <div class="panel lobby-grid">
+          <div>
+            <h2>创建或加入房间</h2>
+            <p class="muted">同一 Wi-Fi 下，房主启动服务器后，把地址和房间码发给朋友。所有隐藏信息只在服务器结算，每个玩家只会收到自己能看的视图。</p>
+            <form id="connectForm" class="join-form">
+              <input id="playerName" maxlength="10" placeholder="你的名字" autocomplete="off" />
+              <input id="joinCode" maxlength="4" placeholder="房间码，可留空创建" autocomplete="off" />
+              <button id="createButton" type="button">创建房间</button>
+              <button type="submit">加入房间</button>
+            </form>
+            <p class="toast-spacer"></p>
+          </div>
+          <div>
+            <h2>人数自动模式</h2>
+            <p class="muted">2 人合作解谜，3-5 人半合作投票，6-8 人红蓝阵营对抗。电脑和平板作为主屏会更舒服。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="lobbyScreen" class="screen hidden">
+        <div class="panel lobby-grid">
+          <div>
+            <h2>等待大厅</h2>
+            <p class="muted">当前人数：<strong id="playerCount">0</strong>。推荐模式：<strong id="modeName">等待玩家</strong></p>
+            <div class="lobby-actions">
+              <button id="startButton" type="button">开始游戏</button>
+              <button id="leaveButton" class="ghost" type="button">离开房间</button>
+            </div>
+          </div>
+          <ol id="playerList" class="player-list" aria-label="玩家列表"></ol>
+        </div>
+      </section>
+
+      <section id="gameScreen" class="screen game-screen hidden">
+        <section class="command-bar" aria-live="polite">
+          <div class="team-card red">
+            <span id="leftStatLabel">目标还剩</span>
+            <strong id="leftStat">0</strong>
+          </div>
+          <div class="turn-card">
+            <span id="turnLabel">准备中</span>
+            <strong id="messageLabel">等待服务器状态。</strong>
+          </div>
+          <div class="team-card blue">
+            <span id="rightStatLabel">机会</span>
+            <strong id="rightStat">0</strong>
+          </div>
+        </section>
+
+        <details class="drawer control-drawer" open>
+          <summary>线索与本回合</summary>
+          <section class="drawer-body">
+            <p id="viewerHint" class="muted">连接服务器后显示你的角色。</p>
+            <section id="cluePanel" class="clue-panel">
+              <label>
+                <span>线索</span>
+                <input id="clueWord" maxlength="12" placeholder="例如：学校" />
+              </label>
+              <label>
+                <span>数量</span>
+                <input id="clueCount" min="1" max="9" type="number" value="1" />
+              </label>
+              <button id="setClueButton" type="button">公布线索</button>
+              <button id="endTurnButton" class="ghost" type="button">结束回合</button>
+              <p id="clueDisplay" class="clue-display">还没有线索</p>
+            </section>
+          </section>
+        </details>
+
+        <details id="votePanel" class="drawer vote-panel hidden" open>
+          <summary>投票猜词</summary>
+          <section class="drawer-body">
+            <p id="voteHint" class="muted"></p>
+            <div id="voteList" class="vote-list"></div>
+            <button id="resolveVoteButton" type="button">结算投票</button>
+          </section>
+        </details>
+
+        <section class="board-wrap">
+          <section class="board" id="board" aria-label="猫咪牌桌"></section>
+        </section>
+
+        <details class="drawer score-panel">
+          <summary>玩家与分数</summary>
+          <section class="drawer-body">
+            <p id="modeRules" class="muted"></p>
+            <div id="scoreList" class="score-list"></div>
+            <div class="game-actions">
+              <button id="backToLobbyButton" class="ghost" type="button">回到大厅</button>
+              <button id="restartButton" type="button">重开一局</button>
+            </div>
+          </section>
+        </details>
+      </section>
+    </main>
+
+    <template id="cardTemplate">
+      <button class="cat-card" type="button">
+        <span class="secret-marker"></span>
+        <span class="image-wrap">
+          <img alt="" loading="lazy" />
+        </span>
+        <span class="card-copy">
+          <strong></strong>
+          <small></small>
+        </span>
+      </button>
+    </template>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/client.js"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "catnames-party-game",
+  "version": "0.2.0",
+  "private": true,
+  "description": "LAN multiplayer Catnames party game with Socket.IO.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node src/game/catnames.test.js"
+  },
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.18.3",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {}
+}
