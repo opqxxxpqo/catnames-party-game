@@ -2,6 +2,8 @@
 
 局域网和公网都可玩的多人派对游戏。前端是原生 HTML/CSS/JS，后端使用 Express + Socket.IO + compression。
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/opqxxxpqo/catnames-party-game)
+
 ## 本地启动
 
 ```bash
