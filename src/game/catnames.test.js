@@ -220,6 +220,20 @@ CATS.forEach((cat) => {
   assert.equal(game.phase, "secretSelect");
 }
 
+// history log captures clue + reveal + finish
+{
+  const game = new CatnamesGame(players(3));
+  game.start();
+  const target = game.cards.find((card) => card.type === "target");
+  game.submitClue("p1", "苹果", 1);
+  game.submitSelection("p2", target.id);
+  game.submitSelection("p3", target.id);
+  const state = game.getStateFor("p2");
+  assert.ok(Array.isArray(state.history));
+  assert.ok(state.history.some((entry) => entry.kind === "clue" && entry.word === "苹果"));
+  assert.ok(state.history.some((entry) => entry.kind === "reveal" && entry.unanimous));
+}
+
 // moreCats requires enough image ids
 assert.throws(
   () => new CatnamesGame(players(3), { boardMode: "moreCats", imageIds: ["a", "b"] }),

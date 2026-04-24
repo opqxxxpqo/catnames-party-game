@@ -142,6 +142,23 @@ class CatnamesGame {
     this.continueOffered = false;
     this.message = "等待开始";
     this.lastResolution = null;
+    this.history = [];
+    this._historySeq = 0;
+  }
+
+  _logHistory(entry) {
+    this._historySeq += 1;
+    this.history.push({
+      seq: this._historySeq,
+      round: this.round,
+      team: this.mode === "team_vs_team" ? this.currentTeam : null,
+      ...entry,
+    });
+    if (this.history.length > 60) this.history = this.history.slice(-60);
+  }
+
+  _nameOf(playerId) {
+    return this.players.find((p) => p.id === playerId)?.name || "玩家";
   }
 
   start() {
@@ -173,6 +190,13 @@ class CatnamesGame {
     if (error) throw new Error(error);
     this.clue = { word: cleanWord, count: cleanCount };
     this.guessesLeft = cleanCount === 0 ? 1 : cleanCount + 1;
+    this._logHistory({
+      kind: "clue",
+      actorId: playerId,
+      actorName: this._nameOf(playerId),
+      word: cleanWord,
+      count: cleanCount,
+    });
     this.votes = {};
     this.secretSelections = {};
     this.revealedSelections = null;
@@ -300,6 +324,7 @@ class CatnamesGame {
     if (this.mode !== "semi_coop") throw new Error("当前模式不使用继续猜");
     this.assertPhase("quickContinue");
     this.assertCurrentClueGiver(playerId);
+    this._logHistory({ kind: "decline", actorName: this._nameOf(playerId) });
     this.advanceTurn("提示者选择本轮结束。");
   }
 
@@ -418,6 +443,7 @@ class CatnamesGame {
       guesserIds: this.getCurrentGuessers().map((player) => player.id),
       stats: this.getStats(),
       cards: this.cards.map((card) => this.getCardFor(card, viewer)),
+      history: this.history.slice(-40),
     };
   }
 
@@ -490,6 +516,17 @@ class CatnamesGame {
       scoringPlayerIds: [...scoringPlayerIds],
       source: meta.source || this.phase,
     };
+    this._logHistory({
+      kind: "reveal",
+      actorIds: [...scoringPlayerIds],
+      actorNames: scoringPlayerIds.map((id) => this._nameOf(id)),
+      clueGiverName: clueGiver?.name || null,
+      cardIndex: card.cardIndex,
+      cardName: card.name || "",
+      revealedType: type,
+      source: meta.source || this.phase,
+      unanimous: Boolean(meta.unanimous),
+    });
     this.votes = {};
     this.secretSelections = {};
     this.revealedSelections = null;
@@ -586,6 +623,9 @@ class CatnamesGame {
   }
 
   advanceTurn(message) {
+    if (this.clue || this.phase) {
+      this._logHistory({ kind: "advance", reason: message });
+    }
     this.clue = null;
     this.guessesLeft = 0;
     this.votes = {};
@@ -771,6 +811,7 @@ class CatnamesGame {
         player.score = 0;
       });
     }
+    this._logHistory({ kind: "finish", message, teamLost: Boolean(options.teamLost) });
     this.status = "finished";
     this.phase = "finished";
     this.phaseEndsAt = null;

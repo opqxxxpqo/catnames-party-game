@@ -59,6 +59,8 @@ const els = {
   keyPanel: document.querySelector("#keyPanel"),
   keyGrid: document.querySelector("#keyGrid"),
   keyLegend: document.querySelector("#keyLegend"),
+  scoreStrip: document.querySelector("#scoreStrip"),
+  historyList: document.querySelector("#historyList"),
   cardTemplate: document.querySelector("#cardTemplate"),
   scoreList: document.querySelector("#scoreList"),
   modeRules: document.querySelector("#modeRules"),
@@ -117,6 +119,49 @@ els.leaveButton.addEventListener("click", () => {
   clearSession();
   window.location.reload();
 });
+
+setupRulesModal();
+
+function setupRulesModal() {
+  const modal = document.querySelector("#rulesModal");
+  if (!modal) return;
+  const panels = modal.querySelectorAll("[data-rules-panel]");
+  const tabs = modal.querySelectorAll("[data-rules-tab]");
+
+  const openTo = (key) => {
+    modal.classList.remove("hidden");
+    if (key) selectTab(key);
+  };
+  const close = () => modal.classList.add("hidden");
+  const selectTab = (key) => {
+    tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.rulesTab === key));
+    panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.rulesPanel === key));
+  };
+
+  document.querySelectorAll("[data-rules-open]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = suggestedTab();
+      openTo(key);
+    });
+  });
+  document.querySelectorAll("[data-rules-close]").forEach((btn) => {
+    btn.addEventListener("click", close);
+  });
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.rulesTab));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) close();
+  });
+}
+
+function suggestedTab() {
+  const mode = roomState?.game?.mode;
+  if (mode === "duet_coop") return "duet";
+  if (mode === "semi_coop") return "semi";
+  if (mode === "team_vs_team") return "team";
+  return "general";
+}
 
 function emitWithAck(eventName, payload, after) {
   const data = typeof payload === "function" || payload == null ? {} : payload;
@@ -251,8 +296,32 @@ function renderGame(game) {
   renderPhasePanel(game, me, isClueGiver, isGuesser);
   renderBoard(game, isClueGiver, isGuesser);
   renderKeyPanel(game);
+  renderScoreStrip(game);
   renderScores(game);
+  renderHistory(game);
   startTimer(game.phaseEndsAt);
+}
+
+function renderScoreStrip(game) {
+  if (!els.scoreStrip) return;
+  els.scoreStrip.innerHTML = "";
+  game.players.forEach((player) => {
+    const chip = document.createElement("span");
+    const mine = player.id === roomState.meId;
+    const active = player.id === game.currentClueGiverId;
+    const classes = ["score-chip"];
+    if (mine) classes.push("me");
+    if (active) classes.push("active");
+    if (!player.connected) classes.push("offline");
+    if (player.team) classes.push(player.team);
+    chip.className = classes.join(" ");
+    chip.innerHTML = `
+      <span class="dot"></span>
+      <span>${escapeHtml(player.name)}${mine ? " · 你" : ""}</span>
+      <strong>${player.score}</strong>
+    `;
+    els.scoreStrip.append(chip);
+  });
 }
 
 function renderKeyPanel(game) {
@@ -279,12 +348,12 @@ function renderKeyPanel(game) {
 
 function buildLegend(game) {
   const map = {
-    target: { label: "目标", var: "--accent" },
-    red: { label: "红队", var: "--red" },
-    blue: { label: "蓝队", var: "--blue" },
-    neutral: { label: "路过", color: "#2a2a26" },
-    danger: { label: "危险", var: "--danger" },
-    assassin: { label: "失败", color: "#000" },
+    target: { label: "目标", var: "--accent", note: "要翻到" },
+    red: { label: "红队", var: "--red", note: "红队目标" },
+    blue: { label: "蓝队", var: "--blue", note: "蓝队目标" },
+    neutral: { label: "路过", color: "#2a2a26", note: "翻到换人" },
+    danger: { label: "危险", var: "--danger", note: "扣机会" },
+    assassin: { label: "失败", color: "#000", note: "直接判负", border: "1px solid var(--accent)" },
   };
   const present = new Set(game.cards.map((card) => card.secretType).filter(Boolean));
   return Array.from(present)
@@ -292,9 +361,108 @@ function buildLegend(game) {
       const item = map[type];
       if (!item) return "";
       const color = item.var ? `var(${item.var})` : item.color;
-      return `<span><span class="dot" style="background:${color}"></span>${item.label}</span>`;
+      const border = item.border ? `;border:${item.border}` : "";
+      return `<span class="legend-item"><span class="dot" style="background:${color}${border}"></span><strong>${item.label}</strong><span class="muted" style="font-size:11px">${item.note}</span></span>`;
     })
     .join("");
+}
+
+function renderHistory(game) {
+  if (!els.historyList) return;
+  els.historyList.innerHTML = "";
+  const entries = game.history || [];
+  if (!entries.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "对局记录会显示双方的出牌、翻牌和结果。";
+    els.historyList.append(li);
+    return;
+  }
+  entries.slice().reverse().forEach((entry) => {
+    const li = document.createElement("li");
+    li.classList.add(`kind-${entry.kind}`);
+    if (entry.kind === "reveal" && entry.revealedType) {
+      li.classList.add(`kind-reveal-${entry.revealedType}`);
+    }
+    const round = document.createElement("span");
+    round.className = "round";
+    round.textContent = historyRoundLabel(entry, game);
+    const glyph = document.createElement("span");
+    glyph.className = "glyph";
+    glyph.textContent = historyGlyph(entry);
+    const text = document.createElement("span");
+    text.className = "text";
+    text.innerHTML = historyText(entry, game);
+    li.append(round, glyph, text);
+    els.historyList.append(li);
+  });
+}
+
+function historyRoundLabel(entry, game) {
+  if (game.mode === "team_vs_team") {
+    const t = entry.team === "red" ? "红" : entry.team === "blue" ? "蓝" : "-";
+    return `R${entry.round}·${t}`;
+  }
+  return `R${entry.round}`;
+}
+
+function historyGlyph(entry) {
+  if (entry.kind === "clue") return "✱";
+  if (entry.kind === "reveal") {
+    return ({
+      target: "◆",
+      red: "◆",
+      blue: "◆",
+      neutral: "·",
+      danger: "!",
+      assassin: "✕",
+    })[entry.revealedType] || "?";
+  }
+  if (entry.kind === "advance") return "↷";
+  if (entry.kind === "decline") return "◁";
+  if (entry.kind === "finish") return "■";
+  return "·";
+}
+
+function historyText(entry, game) {
+  if (entry.kind === "clue") {
+    return `<strong>${escapeHtml(entry.actorName)}</strong> 出提示 <span class="tag-inline" style="background:var(--accent);color:var(--accent-ink)">${escapeHtml(entry.word)} · ${entry.count}</span>`;
+  }
+  if (entry.kind === "reveal") {
+    const cardLabel = entry.cardName || `#${entry.cardIndex}`;
+    const actor = entry.actorNames && entry.actorNames.length
+      ? entry.actorNames.map(escapeHtml).join("/")
+      : "自动";
+    const badge = revealBadge(entry.revealedType);
+    const tag = entry.unanimous ? '<span class="tag-inline" style="background:var(--accent-soft);color:var(--accent)">默契</span>' : "";
+    return `<strong>${actor}</strong> 翻开 <strong>${escapeHtml(cardLabel)}</strong> ${badge}${tag}`;
+  }
+  if (entry.kind === "advance") {
+    return `<span class="muted">${escapeHtml(entry.reason || "回合结束")}</span>`;
+  }
+  if (entry.kind === "decline") {
+    return `<strong>${escapeHtml(entry.actorName || "提示者")}</strong> 收手结束回合`;
+  }
+  if (entry.kind === "finish") {
+    const tag = entry.teamLost
+      ? '<span class="tag-inline" style="background:var(--red);color:#fff">失败</span>'
+      : '<span class="tag-inline" style="background:var(--accent);color:var(--accent-ink)">胜利</span>';
+    return `游戏结束 ${tag} <span class="muted">${escapeHtml(entry.message || "")}</span>`;
+  }
+  return "";
+}
+
+function revealBadge(type) {
+  const map = {
+    target: { label: "命中", bg: "var(--accent)", fg: "var(--accent-ink)" },
+    red: { label: "红队", bg: "var(--red)", fg: "#fff" },
+    blue: { label: "蓝队", bg: "var(--blue)", fg: "#fff" },
+    neutral: { label: "路过", bg: "rgba(255,255,255,0.14)", fg: "var(--ink)" },
+    danger: { label: "危险", bg: "var(--danger)", fg: "#0a0a0a" },
+    assassin: { label: "失败", bg: "#000", fg: "var(--accent)" },
+  };
+  const m = map[type] || map.neutral;
+  return `<span class="tag-inline" style="background:${m.bg};color:${m.fg}">${m.label}</span>`;
 }
 
 function renderPhasePanel(game, me, isClueGiver, isGuesser) {

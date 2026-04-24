@@ -62,6 +62,7 @@
             <p class="muted" id="boardModeHint" style="margin-top:6px;font-size:12px"></p>
             <div class="lobby-actions">
               <button id="startButton" type="button">开始游戏</button>
+              <button class="ghost" type="button" data-rules-open>查看规则</button>
               <button id="leaveButton" class="ghost" type="button">离开房间</button>
             </div>
           </div>
@@ -96,6 +97,7 @@
               </div>
             </div>
             <div class="timer-bar" id="timerBar"><div class="timer-bar-fill" id="timerBarFill"></div></div>
+            <div id="scoreStrip" class="score-strip"></div>
           </section>
 
           <section class="sidebar-card phase-card" id="phasePanel">
@@ -111,9 +113,9 @@
           <section class="sidebar-card key-card hidden" id="keyPanel">
             <div class="sidebar-card-header">
               <h3>你的答案卡</h3>
-              <span class="muted" id="keyLegend"></span>
             </div>
             <div class="key-grid" id="keyGrid"></div>
+            <div class="key-legend" id="keyLegend"></div>
           </section>
 
           <section class="sidebar-card">
@@ -124,20 +126,209 @@
             <p class="muted" id="viewerHint">连接服务器后显示你的角色。</p>
           </section>
 
+          <section class="sidebar-card history-card">
+            <div class="sidebar-card-header">
+              <h3>对局记录</h3>
+              <span class="muted" style="font-size:10px;letter-spacing:0.1em">最近 40 条</span>
+            </div>
+            <ol id="historyList" class="history-list" aria-label="动作历史"></ol>
+          </section>
+
           <section class="sidebar-card">
             <div class="sidebar-card-header">
-              <h3>玩家与分数</h3>
+              <h3>玩家</h3>
             </div>
             <div id="scoreList" class="score-list"></div>
             <p class="muted" id="modeRules" style="margin-top: 10px;"></p>
             <div class="game-actions">
               <button id="backToLobbyButton" class="ghost" type="button">回到大厅</button>
               <button id="restartButton" type="button">重开一局</button>
+              <button class="ghost" type="button" data-rules-open>查看规则</button>
             </div>
           </section>
         </aside>
       </section>
     </main>
+
+    <div id="rulesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+      <div class="modal-backdrop" data-rules-close></div>
+      <div class="modal-panel">
+        <header class="modal-header">
+          <div>
+            <p class="eyebrow">Handbook</p>
+            <h2 id="rulesTitle">完整规则</h2>
+          </div>
+          <button class="modal-close ghost" type="button" data-rules-close aria-label="关闭">×</button>
+        </header>
+        <nav class="modal-tabs" id="rulesTabs">
+          <button type="button" class="tab active" data-rules-tab="general">通用</button>
+          <button type="button" class="tab" data-rules-tab="duet">2 人合作</button>
+          <button type="button" class="tab" data-rules-tab="semi">3–5 人半合作</button>
+          <button type="button" class="tab" data-rules-tab="team">6–8 人对抗</button>
+          <button type="button" class="tab" data-rules-tab="overview">对照表</button>
+        </nav>
+        <div class="modal-body" id="rulesBody">
+          <section class="tab-panel active" data-rules-panel="general">
+            <h3>棋盘</h3>
+            <p>5×5 共 25 张喵卡，每张有隐藏身份。身份分布按当前玩法模式不同。</p>
+
+            <h3>身份图例</h3>
+            <ul class="legend-list">
+              <li><span class="dot" style="background:var(--accent)"></span><strong>目标 / 队伍色</strong>：你要引导队友翻到的喵。</li>
+              <li><span class="dot" style="background:#2a2a26"></span><strong>路过</strong>：翻到即结束回合。</li>
+              <li><span class="dot" style="background:var(--danger)"></span><strong>危险</strong>：翻到扣机会。</li>
+              <li><span class="dot" style="background:#000;border:1px solid var(--accent)"></span><strong>失败</strong>：翻到直接判负。</li>
+            </ul>
+
+            <h3>提示格式</h3>
+            <p>一个词 + 一个数字（0–9）。同一条提示最多可猜 <strong>数字 + 1</strong> 次（奖励猜）。例："动物 3" 可猜最多 4 张。</p>
+
+            <h3>提示词合法性</h3>
+            <p class="muted">经典模式生效，更多喵 · 纯图模式跳过：</p>
+            <ul>
+              <li>必须是单个词，不能有空格</li>
+              <li>不能纯数字</li>
+              <li>不能混用中英文</li>
+              <li><strong>不能包含棋盘上任何未翻开的喵名里的字符</strong>（比如棋盘有"迷路喵"就不能用含"迷"或"路"的词）</li>
+            </ul>
+
+            <h3>图片模式（与玩法模式正交）</h3>
+            <table class="rules-table">
+              <thead><tr><th>模式</th><th>图源</th><th>呈现</th></tr></thead>
+              <tbody>
+                <tr><td>经典 · 配字版</td><td>63 只本地 HTTP 喵</td><td>图 + 中文喵名 + 描述</td></tr>
+                <tr><td>更多喵 · 纯图</td><td>实时从 CATAAS 抓 25 张</td><td>纯图 + <code>#序号</code></td></tr>
+              </tbody>
+            </table>
+
+            <h3>答案卡（右侧小棋盘）</h3>
+            <p>只对"能看身份"的人显示：2 人都看自己那份密钥；3–5 人只有当前提示者看；6–8 人只有 Spymaster 看。纯图模式下只显身份色 + 序号。</p>
+          </section>
+
+          <section class="tab-panel" data-rules-panel="duet">
+            <h3>2 人合作解谜 (duet_coop)</h3>
+            <p class="muted">触发：2 人。招牌体验：<strong>"你居然猜到了我想说的意思。"</strong></p>
+
+            <h3>身份分布</h3>
+            <p>两套独立密钥 A / B，各 <strong>9 目标 / 13 路过 / 2 危险 / 1 失败</strong>。同一张卡可能 A 视角是目标、B 视角是路过。</p>
+
+            <h3>流程</h3>
+            <ol>
+              <li>A 给 B 出提示，B 按 A 的密钥翻牌</li>
+              <li>B 可连续翻，直到 <code>count+1</code> 用完 / 猜错 / 点"结束回合"</li>
+              <li>翻到路过 / 危险 → 回合立即结束</li>
+              <li>角色互换，换 B 给 A 出提示</li>
+              <li>最多 <strong>9 回合</strong>；累计 3 次危险 或 1 次失败立刻判负</li>
+            </ol>
+
+            <h3>胜负</h3>
+            <p><strong>赢</strong>：两套密钥里所有目标（并集）都被找到。<br /><strong>输</strong>：9 回合用尽 / 3 次危险 / 翻到失败喵。</p>
+
+            <h3>计分（MVP 展示）</h3>
+            <ul>
+              <li>提示者：命中 +2，危险 −1，失败 −3</li>
+              <li>猜测者：命中 +1，危险 −1</li>
+            </ul>
+          </section>
+
+          <section class="tab-panel" data-rules-panel="semi">
+            <h3>3–5 人半合作同步揭示 (semi_coop)</h3>
+            <p class="muted">触发：3–4 人强制；5–6 人房主可选。招牌体验：<strong>"我们同时点了老虎！"</strong>——默契命中的爆点。</p>
+
+            <h3>身份分布</h3>
+            <p>一套公共密钥：<strong>9 目标 / 13 路过 / 2 危险 / 1 失败</strong>，只有当前提示者能看身份。</p>
+
+            <h3>阶段状态机（全程硬时限，超时自动推进）</h3>
+            <ol>
+              <li><strong>clue</strong>（60s）：提示者输入词 + 数字，<code>guessesLeft = count + 1</code></li>
+              <li><strong>secretSelect</strong>（30s）：所有猜测者<em>同时秘密</em>各选一张</li>
+              <li>同步揭示三种结果：
+                <table class="rules-table">
+                  <tbody>
+                    <tr><td><strong>全员一致</strong></td><td>直接翻牌，提示者额外 +1 默契分，命中者分数 ×2</td></tr>
+                    <tr><td><strong>有分歧</strong></td><td>进 discuss(30s) → 提示者按"开启投票" → vote(20s) → 提示者结算多数票</td></tr>
+                    <tr><td><strong>完全分歧</strong></td><td>进 decide(20s)，提示者只能从猜测者实际选过的那几张里挑一张</td></tr>
+                  </tbody>
+                </table>
+              </li>
+              <li>翻牌结算：
+                <ul>
+                  <li>目标：消耗一次猜测机会；<code>guessesLeft &gt; 0</code> → <strong>quickContinue(20s)</strong>（投票继续 / 收手）；<code>= 0</code> → 结束回合</li>
+                  <li>路过 / 危险 / 失败：立刻结束回合</li>
+                </ul>
+              </li>
+              <li>回合结束 → 提示者轮到下一位</li>
+            </ol>
+
+            <h3>全局硬时限</h3>
+            <p>单局最长 <strong>20 分钟</strong>，时间到按当前进度判负。</p>
+
+            <h3>胜负</h3>
+            <p><strong>赢</strong>：翻完全部 9 张目标，保留个人分做 MVP 排行。<br /><strong>输</strong>：失败喵 / 危险累计 3 次 / 20 分钟用尽 → <strong>团队失败，所有个人分清零</strong>（防止队友在必败局刷分）。</p>
+
+            <h3>计分</h3>
+            <ul>
+              <li>提示者：命中 +2，全员默契再 +1，危险 −1，失败 −3</li>
+              <li>猜测者：命中 +1，全员默契再 +1（翻倍），危险 −1</li>
+            </ul>
+          </section>
+
+          <section class="tab-panel" data-rules-panel="team">
+            <h3>6–8 人阵营对抗 (team_vs_team)</h3>
+            <p class="muted">触发：7–8 人强制；5–6 人房主可选。招牌体验：<strong>"绝杀！"</strong>——最后一张抢在对面手里翻回来。</p>
+
+            <h3>身份分布</h3>
+            <p>先手队 <strong>9</strong> 张 / 后手队 <strong>8</strong> 张 / <strong>7</strong> 路过 / <strong>1</strong> 失败。按加入顺序偶/奇分红蓝，每队前两位默认 Spymaster。</p>
+
+            <h3>流程</h3>
+            <ol>
+              <li>当前队 Spymaster 出提示（词 + 数字）</li>
+              <li>本队进入 reveal 阶段，队员自由点牌（无秘密投票）</li>
+              <li>每翻一张按身份结算：
+                <table class="rules-table">
+                  <thead><tr><th>翻到</th><th>结果</th></tr></thead>
+                  <tbody>
+                    <tr><td>自己队的喵</td><td>+2 分，<code>guessesLeft--</code>；用完 → 换队；未用完 → 可继续翻</td></tr>
+                    <tr><td>对方队的喵</td><td>帮对面翻了一张，Spymaster −1，回合结束</td></tr>
+                    <tr><td>路过喵</td><td>回合结束</td></tr>
+                    <tr><td>失败喵</td><td>对方队直接获胜</td></tr>
+                  </tbody>
+                </table>
+              </li>
+              <li>队员或 Spymaster 都能按"结束回合"主动收手</li>
+            </ol>
+
+            <h3>胜负</h3>
+            <p><strong>赢</strong>：把本队全部喵翻完（先手 9 / 后手 8）。<br /><strong>输</strong>：对方先翻完 / 自己翻到失败喵。</p>
+
+            <h3>计分</h3>
+            <ul><li>Spymaster 每命中 +2，翻错帮对方 −1。</li></ul>
+          </section>
+
+          <section class="tab-panel" data-rules-panel="overview">
+            <h3>模式对照表</h3>
+            <table class="rules-table">
+              <thead>
+                <tr><th>项</th><th>2 人 duet</th><th>3–5 人 semi</th><th>6–8 人 team</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>核心时刻</td><td>默契</td><td>同步揭示的欢呼 / 哀嚎</td><td>绝杀</td></tr>
+                <tr><td>密钥</td><td>双份（A/B）</td><td>单份，提示者可见</td><td>单份，Spymaster 可见</td></tr>
+                <tr><td>目标数</td><td>9 + 9（并集约 15）</td><td>9</td><td>红 9 / 蓝 8</td></tr>
+                <tr><td>危险 / 失败</td><td>2 危险 + 1 失败 ×2 套</td><td>2 危险 + 1 失败</td><td>1 失败</td></tr>
+                <tr><td>回合制</td><td>最多 9 回合</td><td>无上限，20 分钟硬时限</td><td>翻完为止</td></tr>
+                <tr><td>猜牌机制</td><td>自由翻</td><td>秘密选 → 同步揭示 → 投票 / 决定</td><td>自由翻</td></tr>
+                <tr><td>奖励猜</td><td>count+1</td><td>count+1</td><td>count+1</td></tr>
+                <tr><td>超时机制</td><td>无</td><td>每阶段 + 全局硬时限</td><td>无</td></tr>
+                <tr><td>个人分</td><td>常态展示</td><td>仅胜利时结算，失败清零</td><td>常态展示</td></tr>
+                <tr><td>推荐人数</td><td>2</td><td>3–6（最佳 4）</td><td>7–8（5–6 可选）</td></tr>
+              </tbody>
+            </table>
+            <p class="muted" style="margin-top:16px">抬眼看右侧的小格子，答案都在那儿。</p>
+          </section>
+        </div>
+      </div>
+    </div>
 
     <template id="cardTemplate">
       <button class="cat-card" type="button">
