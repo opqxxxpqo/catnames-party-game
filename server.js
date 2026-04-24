@@ -8,7 +8,10 @@ const { RoomRegistry } = require("./src/room");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  pingInterval: 25_000,
+  pingTimeout: 60_000,
+});
 const rooms = new RoomRegistry();
 const port = Number(process.env.PORT || 3000);
 
@@ -26,7 +29,7 @@ io.on("connection", (socket) => {
       leaveExistingRoom(socket);
       const room = rooms.createRoom();
       const player = room.addClient(socket.id, cleanName(name));
-      rooms.socketToRoom.set(socket.id, room.code);
+      rooms.registerSocket(socket.id, room);
       socket.join(room.code);
       broadcastRoom(room);
       return { roomCode: room.code, playerId: player.id };
@@ -39,7 +42,20 @@ io.on("connection", (socket) => {
       const room = rooms.getRoom(roomCode);
       if (!room) throw new Error("没有找到这个房间");
       const player = room.addClient(socket.id, cleanName(name));
-      rooms.socketToRoom.set(socket.id, room.code);
+      rooms.registerSocket(socket.id, room);
+      socket.join(room.code);
+      broadcastRoom(room);
+      return { roomCode: room.code, playerId: player.id };
+    });
+  });
+
+  socket.on("resumeRoom", ({ roomCode, playerId, name }, ack) => {
+    tryAction(ack, () => {
+      leaveExistingRoom(socket);
+      const room = rooms.getRoom(roomCode);
+      if (!room) throw new Error("房间已经不存在");
+      const player = room.resumeClient(socket.id, String(playerId || ""), String(name || "").trim().slice(0, 10));
+      rooms.registerSocket(socket.id, room);
       socket.join(room.code);
       broadcastRoom(room);
       return { roomCode: room.code, playerId: player.id };
@@ -47,56 +63,56 @@ io.on("connection", (socket) => {
   });
 
   socket.on("startGame", (ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.startGame(socket.id);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.startGame(player.id);
       broadcastRoom(room);
     });
   });
 
   socket.on("submitClue", ({ word, count }, ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.game.submitClue(socket.id, word, count);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.game.submitClue(player.id, word, count);
       broadcastRoom(room);
     });
   });
 
   socket.on("revealCard", ({ cardId }, ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.game.revealCard(socket.id, cardId);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.game.revealCard(player.id, cardId);
       broadcastRoom(room);
     });
   });
 
   socket.on("castVote", ({ cardId }, ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.game.castVote(socket.id, cardId);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.game.castVote(player.id, cardId);
       broadcastRoom(room);
     });
   });
 
   socket.on("resolveVote", (ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.game.resolveVote(socket.id);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.game.resolveVote(player.id);
       broadcastRoom(room);
     });
   });
 
   socket.on("endTurn", (ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.game.endTurn(socket.id);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.game.endTurn(player.id);
       broadcastRoom(room);
     });
   });
 
   socket.on("backToLobby", (ack) => {
-    tryRoomAction(socket, ack, (room) => {
-      room.backToLobby(socket.id);
+    tryRoomAction(socket, ack, (room, player) => {
+      room.backToLobby(player.id);
       broadcastRoom(room);
     });
   });
 
   socket.on("disconnect", () => {
-    const room = rooms.removeClient(socket.id);
+    const room = rooms.disconnectSocket(socket.id, broadcastRoom);
     if (room) broadcastRoom(room);
   });
 });
@@ -120,14 +136,16 @@ function tryRoomAction(socket, ack, fn) {
   tryAction(ack, () => {
     const room = rooms.findBySocket(socket.id);
     if (!room) throw new Error("你还没有加入房间");
-    fn(room);
+    const player = room.getPlayerBySocket(socket.id);
+    if (!player) throw new Error("连接状态已经失效，请重新加入房间");
+    fn(room, player);
     return {};
   });
 }
 
 function broadcastRoom(room) {
-  for (const client of room.players) {
-    io.to(client.id).emit("state", room.getStateFor(client.id));
+  for (const client of room.connectedPlayers) {
+    io.to(client.socketId).emit("state", room.getStateFor(client.id));
   }
 }
 
@@ -135,7 +153,7 @@ function leaveExistingRoom(socket) {
   const oldRoom = rooms.findBySocket(socket.id);
   if (!oldRoom) return;
   socket.leave(oldRoom.code);
-  rooms.removeClient(socket.id);
+  rooms.removeSocketNow(socket.id);
   if (oldRoom.players.length > 0) broadcastRoom(oldRoom);
 }
 

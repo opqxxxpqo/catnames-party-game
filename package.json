@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node src/game/catnames.test.js"
+    "test": "node src/game/catnames.test.js && node src/room.test.js"
   },
   "dependencies": {
     "compression": "^1.7.4",

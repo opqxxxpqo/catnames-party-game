@@ -1,6 +1,7 @@
 const socket = io();
 let roomState = null;
 let selectedVoteCardId = null;
+const sessionKey = "catnames.session.v1";
 
 const els = {
   connectScreen: document.querySelector("#connectScreen"),
@@ -48,12 +49,28 @@ socket.on("state", (state) => {
 });
 
 socket.on("disconnect", () => showToast("连接断开，正在尝试重连。"));
-socket.on("connect", () => showToast(""));
+socket.on("connect", () => {
+  const session = loadSession();
+  if (!session?.roomCode || !session?.playerId) {
+    showToast("");
+    return;
+  }
+  showToast("已重新连接，正在恢复房间。");
+  emitWithAck("resumeRoom", session, (response) => {
+    saveSession({ ...session, roomCode: response.roomCode, playerId: response.playerId });
+    showToast("");
+  });
+});
 
 els.createButton.addEventListener("click", () => {
   emitWithAck("createRoom", { name: els.playerName.value }, (response) => {
     if (response.ok) {
       els.joinCode.value = response.roomCode;
+      saveSession({
+        roomCode: response.roomCode,
+        playerId: response.playerId,
+        name: els.playerName.value.trim(),
+      });
       showToast("房间已创建，把房间码发给朋友。");
     }
   });
@@ -61,13 +78,22 @@ els.createButton.addEventListener("click", () => {
 
 els.connectForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  emitWithAck("joinRoom", { roomCode: els.joinCode.value, name: els.playerName.value });
+  emitWithAck("joinRoom", { roomCode: els.joinCode.value, name: els.playerName.value }, (response) => {
+    saveSession({
+      roomCode: response.roomCode,
+      playerId: response.playerId,
+      name: els.playerName.value.trim(),
+    });
+  });
 });
 
 els.startButton.addEventListener("click", () => emitWithAck("startGame"));
 els.restartButton.addEventListener("click", () => emitWithAck("startGame"));
 els.backToLobbyButton.addEventListener("click", () => emitWithAck("backToLobby"));
-els.leaveButton.addEventListener("click", () => window.location.reload());
+els.leaveButton.addEventListener("click", () => {
+  clearSession();
+  window.location.reload();
+});
 
 els.setClueButton.addEventListener("click", () => {
   emitWithAck("submitClue", {
@@ -82,9 +108,14 @@ els.resolveVoteButton.addEventListener("click", () => emitWithAck("resolveVote")
 function emitWithAck(eventName, payload, after) {
   const data = typeof payload === "function" || payload == null ? {} : payload;
   const callback = typeof payload === "function" ? payload : after;
-  socket.emit(eventName, data, (response) => {
+  socket.timeout(10_000).emit(eventName, data, (error, response) => {
+    if (error) {
+      showToast("连接超时，稍后会自动重试。");
+      return;
+    }
     if (!response?.ok) {
       showToast(response?.error || "操作失败");
+      if (eventName === "resumeRoom") clearSession();
       return;
     }
     showToast("");
@@ -111,7 +142,8 @@ function renderLobby() {
   els.playerList.innerHTML = "";
   roomState.players.forEach((player, index) => {
     const li = document.createElement("li");
-    li.innerHTML = `<span>${index + 1}. ${escapeHtml(player.name)}</span><span class="tag">${player.isHost ? "房主" : "已加入"}</span>`;
+    const status = player.connected ? (player.isHost ? "房主" : "在线") : "断线";
+    li.innerHTML = `<span>${index + 1}. ${escapeHtml(player.name)}</span><span class="tag">${status}</span>`;
     els.playerList.append(li);
   });
 }
@@ -202,7 +234,8 @@ function renderScores(game) {
     row.className = "score-row";
     const teamTag = player.team ? `<span class="tag ${player.team}">${player.team === "red" ? "红队" : "蓝队"}</span>` : "";
     const roleName = player.role === "spymaster" || player.role === "clue_giver" ? "提示者" : "猜测者";
-    row.innerHTML = `<span>${escapeHtml(player.name)} ${teamTag}<span class="tag">${roleName}</span></span><strong>${player.score}</strong>`;
+    const statusTag = player.connected ? "" : '<span class="tag">断线</span>';
+    row.innerHTML = `<span>${escapeHtml(player.name)} ${teamTag}<span class="tag">${roleName}</span>${statusTag}</span><strong>${player.score}</strong>`;
     els.scoreList.append(row);
   });
 }
@@ -256,6 +289,22 @@ function labelForType(type) {
 
 function showToast(message) {
   els.toast.textContent = message || "";
+}
+
+function loadSession() {
+  try {
+    return JSON.parse(localStorage.getItem(sessionKey) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session) {
+  localStorage.setItem(sessionKey, JSON.stringify(session));
+}
+
+function clearSession() {
+  localStorage.removeItem(sessionKey);
 }
 
 function escapeHtml(value) {
