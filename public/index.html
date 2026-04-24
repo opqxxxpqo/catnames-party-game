@@ -17,9 +17,8 @@
           <span>Room</span>
           <strong id="roomCode">----</strong>
         </div>
+        <p id="toast" class="toast" role="status"></p>
       </section>
-
-      <p id="toast" class="toast" role="status"></p>
 
       <section id="connectScreen" class="screen">
         <div class="panel lobby-grid">
@@ -71,23 +70,31 @@
 
       <section id="gameScreen" class="screen game-screen hidden">
         <div class="game-main">
-          <section class="status-strip" aria-live="polite">
-            <div class="status-block">
-              <span class="label" id="leftStatLabel">目标还剩</span>
-              <strong id="leftStat">0</strong>
+          <section class="board-wrap">
+            <div class="board" id="board" aria-label="猫咪牌桌"></div>
+          </section>
+        </div>
+
+        <aside class="game-sidebar">
+          <section class="sidebar-card status-card" aria-live="polite">
+            <div class="status-strip">
+              <div class="status-block">
+                <span class="label" id="leftStatLabel">目标还剩</span>
+                <strong id="leftStat">0</strong>
+              </div>
+              <div class="status-block status-center">
+                <span class="turn-label" id="turnLabel">准备中</span>
+                <span class="message-label" id="messageLabel">等待服务器状态。</span>
+              </div>
+              <div class="status-block right-align">
+                <span class="label" id="rightStatLabel">机会</span>
+                <strong id="rightStat">0</strong>
+              </div>
             </div>
-            <div class="status-block status-center">
-              <span class="turn-label" id="turnLabel">准备中</span>
-              <span class="message-label" id="messageLabel">等待服务器状态。</span>
-              <div class="timer-bar" id="timerBar"><div class="timer-bar-fill" id="timerBarFill"></div></div>
-            </div>
-            <div class="status-block" style="text-align: right; align-items: flex-end;">
-              <span class="label" id="rightStatLabel">机会</span>
-              <strong id="rightStat">0</strong>
-            </div>
+            <div class="timer-bar" id="timerBar"><div class="timer-bar-fill" id="timerBarFill"></div></div>
           </section>
 
-          <section class="phase-card" id="phasePanel">
+          <section class="sidebar-card phase-card" id="phasePanel">
             <div class="phase-title">
               <span class="pill" id="phasePill">Phase</span>
               <h3 id="phaseHeading">等待开局</h3>
@@ -97,29 +104,32 @@
             <div class="phase-actions" id="phaseActions"></div>
           </section>
 
-          <section class="board-wrap">
-            <div class="board" id="board" aria-label="猫咪牌桌"></div>
+          <section class="sidebar-card key-card hidden" id="keyPanel">
+            <div class="sidebar-card-header">
+              <h3>你的答案卡</h3>
+              <span class="muted" id="keyLegend"></span>
+            </div>
+            <div class="key-grid" id="keyGrid"></div>
           </section>
-        </div>
 
-        <aside class="game-sidebar">
           <section class="sidebar-card">
-            <h3>当前线索</h3>
-            <p id="clueDisplayWrap"><span id="clueDisplay">还没有线索</span></p>
+            <div class="sidebar-card-header">
+              <h3>当前线索</h3>
+              <span id="clueDisplay" class="clue-display-inline">无</span>
+            </div>
             <p class="muted" id="viewerHint">连接服务器后显示你的角色。</p>
           </section>
+
           <section class="sidebar-card">
-            <h3>玩家与分数</h3>
+            <div class="sidebar-card-header">
+              <h3>玩家与分数</h3>
+            </div>
             <div id="scoreList" class="score-list"></div>
             <p class="muted" id="modeRules" style="margin-top: 10px;"></p>
             <div class="game-actions">
               <button id="backToLobbyButton" class="ghost" type="button">回到大厅</button>
               <button id="restartButton" type="button">重开一局</button>
             </div>
-          </section>
-          <section class="sidebar-card">
-            <h3>规则速览</h3>
-            <p class="muted">提示须是单个词 + 数字；不能包含棋盘上已有词的字符；不能混用中英文或纯数字。</p>
           </section>
         </aside>
       </section>

@@ -54,6 +54,9 @@ const els = {
   clueDisplay: document.querySelector("#clueDisplay"),
   viewerHint: document.querySelector("#viewerHint"),
   board: document.querySelector("#board"),
+  keyPanel: document.querySelector("#keyPanel"),
+  keyGrid: document.querySelector("#keyGrid"),
+  keyLegend: document.querySelector("#keyLegend"),
   cardTemplate: document.querySelector("#cardTemplate"),
   scoreList: document.querySelector("#scoreList"),
   modeRules: document.querySelector("#modeRules"),
@@ -198,9 +201,11 @@ function renderGame(game) {
   els.turnLabel.textContent = makeTurnLabel(game, clueGiver);
   els.messageLabel.textContent = game.message;
   if (game.clue) {
-    els.clueDisplay.innerHTML = `<strong>${escapeHtml(game.clue.word)}</strong> <span class="tag accent">${game.clue.count}</span>`;
+    els.clueDisplay.classList.remove("empty");
+    els.clueDisplay.innerHTML = `${escapeHtml(game.clue.word)} <span class="count">${game.clue.count}</span>`;
   } else {
-    els.clueDisplay.textContent = "还没有线索";
+    els.clueDisplay.classList.add("empty");
+    els.clueDisplay.textContent = "无";
   }
   els.restartButton.disabled = !isHost;
   els.backToLobbyButton.disabled = !isHost;
@@ -214,8 +219,50 @@ function renderGame(game) {
 
   renderPhasePanel(game, me, isClueGiver, isGuesser);
   renderBoard(game, isClueGiver, isGuesser);
+  renderKeyPanel(game);
   renderScores(game);
   startTimer(game.phaseEndsAt);
+}
+
+function renderKeyPanel(game) {
+  const hasKey = game.cards.some((card) => card.secretType);
+  if (!hasKey) {
+    els.keyPanel.classList.add("hidden");
+    els.keyGrid.innerHTML = "";
+    els.keyLegend.innerHTML = "";
+    return;
+  }
+  els.keyPanel.classList.remove("hidden");
+  els.keyGrid.innerHTML = "";
+  game.cards.forEach((card) => {
+    const tile = document.createElement("div");
+    tile.className = `key-tile type-${card.secretType || "neutral"}`;
+    if (card.revealed) tile.classList.add("revealed");
+    tile.textContent = card.name;
+    tile.title = `${card.name}（${labelForType(card.secretType)}）`;
+    els.keyGrid.append(tile);
+  });
+  els.keyLegend.innerHTML = buildLegend(game);
+}
+
+function buildLegend(game) {
+  const map = {
+    target: { label: "目标", var: "--accent" },
+    red: { label: "红队", var: "--red" },
+    blue: { label: "蓝队", var: "--blue" },
+    neutral: { label: "路过", color: "#2a2a26" },
+    danger: { label: "危险", var: "--danger" },
+    assassin: { label: "失败", color: "#000" },
+  };
+  const present = new Set(game.cards.map((card) => card.secretType).filter(Boolean));
+  return Array.from(present)
+    .map((type) => {
+      const item = map[type];
+      if (!item) return "";
+      const color = item.var ? `var(${item.var})` : item.color;
+      return `<span><span class="dot" style="background:${color}"></span>${item.label}</span>`;
+    })
+    .join("");
 }
 
 function renderPhasePanel(game, me, isClueGiver, isGuesser) {
@@ -470,9 +517,6 @@ function renderBoard(game, isClueGiver, isGuesser) {
   const phase = game.phase;
   game.cards.forEach((card) => {
     const node = els.cardTemplate.content.firstElementChild.cloneNode(true);
-    const type = card.revealedType || card.secretType;
-    if (type) node.classList.add(`secret-${type}`);
-    node.classList.toggle("secret-visible", Boolean(card.secretType));
     node.classList.toggle("revealed", card.revealed);
     if (card.revealedType) node.classList.add(`reveal-${card.revealedType}`);
 
@@ -481,7 +525,6 @@ function renderBoard(game, isClueGiver, isGuesser) {
 
     const canClick = cardClickable(game, card, isClueGiver, isGuesser);
     node.disabled = !canClick;
-    node.querySelector(".secret-marker").textContent = labelForType(card.secretType);
     node.querySelector(".selection-marker").textContent = mySecret === card.id ? "我的选择" : "";
     node.querySelector("img").src = `https://http.cat/${card.code}.jpg`;
     node.querySelector("img").alt = card.name;
