@@ -15,6 +15,13 @@ const io = new Server(server, {
 const rooms = new RoomRegistry();
 const port = Number(process.env.PORT || 3000);
 
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] uncaughtException:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[FATAL] unhandledRejection:", err);
+});
+
 app.use(compression());
 app.use(
   express.static(path.join(__dirname, "public"), {
@@ -24,6 +31,8 @@ app.use(
 );
 
 io.on("connection", (socket) => {
+  console.log("[connect]", socket.id);
+
   socket.on("createRoom", ({ name }, ack) => {
     tryAction(ack, () => {
       leaveExistingRoom(socket);
@@ -70,7 +79,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("submitClue", ({ word, count }, ack) => {
+    console.log("[submitClue]", socket.id, word, count);
     tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
       room.game.submitClue(player.id, word, count);
       broadcastRoom(room);
     });
@@ -78,6 +89,7 @@ io.on("connection", (socket) => {
 
   socket.on("revealCard", ({ cardId }, ack) => {
     tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
       room.game.revealCard(player.id, cardId);
       broadcastRoom(room);
     });
@@ -85,6 +97,7 @@ io.on("connection", (socket) => {
 
   socket.on("castVote", ({ cardId }, ack) => {
     tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
       room.game.castVote(player.id, cardId);
       broadcastRoom(room);
     });
@@ -92,6 +105,7 @@ io.on("connection", (socket) => {
 
   socket.on("resolveVote", (ack) => {
     tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
       room.game.resolveVote(player.id);
       broadcastRoom(room);
     });
@@ -99,6 +113,7 @@ io.on("connection", (socket) => {
 
   socket.on("endTurn", (ack) => {
     tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
       room.game.endTurn(player.id);
       broadcastRoom(room);
     });
@@ -111,7 +126,8 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
+    console.log("[disconnect]", socket.id, reason);
     const room = rooms.disconnectSocket(socket.id, broadcastRoom);
     if (room) broadcastRoom(room);
   });
@@ -128,6 +144,7 @@ function tryAction(ack, fn) {
     const data = fn();
     ack?.({ ok: true, ...data });
   } catch (error) {
+    console.error("[tryAction]", error);
     ack?.({ ok: false, error: error.message });
   }
 }
@@ -144,8 +161,12 @@ function tryRoomAction(socket, ack, fn) {
 }
 
 function broadcastRoom(room) {
-  for (const client of room.connectedPlayers) {
-    io.to(client.socketId).emit("state", room.getStateFor(client.id));
+  try {
+    for (const client of room.connectedPlayers) {
+      io.to(client.socketId).emit("state", room.getStateFor(client.id));
+    }
+  } catch (error) {
+    console.error("[broadcastRoom]", error);
   }
 }
 
