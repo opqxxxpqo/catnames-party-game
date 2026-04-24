@@ -36,6 +36,8 @@ const els = {
   playerCount: document.querySelector("#playerCount"),
   modeName: document.querySelector("#modeName"),
   modePicker: document.querySelector("#modePicker"),
+  boardModePicker: document.querySelector("#boardModePicker"),
+  boardModeHint: document.querySelector("#boardModeHint"),
   playerList: document.querySelector("#playerList"),
   startButton: document.querySelector("#startButton"),
   leaveButton: document.querySelector("#leaveButton"),
@@ -177,6 +179,32 @@ function renderLobby() {
     });
     els.modePicker.append(chip);
   });
+  const boardMode = roomState.boardMode || "classic";
+  els.boardModePicker.innerHTML = "";
+  const BOARD_OPTIONS = [
+    { mode: "classic", label: "经典 · 配字版" },
+    { mode: "moreCats", label: "更多喵 · 纯图" },
+  ];
+  BOARD_OPTIONS.forEach(({ mode, label }) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `mode-chip ${boardMode === mode ? "active" : ""}`;
+    chip.textContent = label;
+    chip.disabled = !amHost;
+    chip.addEventListener("click", () => {
+      emitWithAck("setBoardMode", { boardMode: mode });
+    });
+    els.boardModePicker.append(chip);
+  });
+  if (boardMode === "moreCats") {
+    els.boardModeHint.textContent = "每局从 CATAAS 实时抓取 25 张猫片，无配字。图片池偶尔抖动时会自动回退到经典模式。";
+  } else {
+    els.boardModeHint.textContent = "63 只有名字有梗的猫卡（HTTP 猫主题），每局随机 25 只。";
+  }
+  if (roomState.lastBoardError) {
+    showToast(roomState.lastBoardError);
+  }
+
   els.startButton.disabled = !amHost || allowed.length === 0;
   els.playerList.innerHTML = "";
   roomState.players.forEach((player, index) => {
@@ -202,7 +230,10 @@ function renderGame(game) {
   els.messageLabel.textContent = game.message;
   if (game.clue) {
     els.clueDisplay.classList.remove("empty");
-    els.clueDisplay.innerHTML = `${escapeHtml(game.clue.word)} <span class="count">${game.clue.count}</span>`;
+    const guesses = typeof game.guessesLeft === "number" && game.guessesLeft > 0
+      ? ` <span class="count">${game.clue.count}</span><span class="tag" style="margin-left:6px">还能猜 ${game.guessesLeft}</span>`
+      : ` <span class="count">${game.clue.count}</span>`;
+    els.clueDisplay.innerHTML = `${escapeHtml(game.clue.word)}${guesses}`;
   } else {
     els.clueDisplay.classList.add("empty");
     els.clueDisplay.textContent = "无";
@@ -238,8 +269,9 @@ function renderKeyPanel(game) {
     const tile = document.createElement("div");
     tile.className = `key-tile type-${card.secretType || "neutral"}`;
     if (card.revealed) tile.classList.add("revealed");
-    tile.textContent = card.name;
-    tile.title = `${card.name}（${labelForType(card.secretType)}）`;
+    const label = card.name || `#${card.cardIndex}`;
+    tile.textContent = label;
+    tile.title = `${label}（${labelForType(card.secretType)}）`;
     els.keyGrid.append(tile);
   });
   els.keyLegend.innerHTML = buildLegend(game);
@@ -384,19 +416,19 @@ function renderSecretSelectPanel(game, isGuesser) {
 }
 
 function renderFreeRevealPanel(game, isClueGiver, isGuesser) {
-  if (!isGuesser) return;
   const hint = document.createElement("p");
   hint.className = "muted";
-  hint.textContent = "点击下方棋盘里的一张猫牌进行翻牌。";
+  const left = typeof game.guessesLeft === "number" ? game.guessesLeft : null;
+  hint.textContent = isGuesser
+    ? `点击下方棋盘里的一张猫牌翻牌${left ? `，还能再猜 ${left} 张` : ""}。猜错或收手会结束回合。`
+    : `等待猜测者翻牌${left ? `（还剩 ${left} 次）` : ""}。`;
   els.phaseInput.append(hint);
-  if (isClueGiver || isGuesser) {
-    const endBtn = document.createElement("button");
-    endBtn.type = "button";
-    endBtn.className = "ghost";
-    endBtn.textContent = "结束回合";
-    endBtn.addEventListener("click", () => emitWithAck("endTurn"));
-    els.phaseActions.append(endBtn);
-  }
+  const endBtn = document.createElement("button");
+  endBtn.type = "button";
+  endBtn.className = "ghost";
+  endBtn.textContent = "结束回合";
+  endBtn.addEventListener("click", () => emitWithAck("endTurn"));
+  els.phaseActions.append(endBtn);
 }
 
 function renderDiscussPanel(game, isClueGiver) {
@@ -435,10 +467,11 @@ function renderVotePanel(game, isClueGiver, isGuesser) {
     openCards.forEach((card) => {
       const button = document.createElement("button");
       button.type = "button";
-      const isMine = myVoteName === card.name;
+      const label = card.name || `第${card.cardIndex}张`;
+      const isMine = myVoteName === label;
       button.className = `vote-option ${isMine ? "selected" : ""}`;
-      const tally = tallies.get(card.name) || 0;
-      button.innerHTML = `<strong>${escapeHtml(card.name)}</strong><span class="tally">${tally} 票</span>`;
+      const tally = tallies.get(label) || 0;
+      button.innerHTML = `<strong>${escapeHtml(label)}</strong><span class="tally">${tally} 票</span>`;
       button.addEventListener("click", () => {
         selectedVoteCardId = card.id;
         emitWithAck("castVote", { cardId: card.id });
@@ -515,10 +548,16 @@ function renderDecidePanel(game, isClueGiver) {
 function renderBoard(game, isClueGiver, isGuesser) {
   els.board.innerHTML = "";
   const phase = game.phase;
+  const boardMode = game.boardMode || "classic";
+  els.board.classList.toggle("board-more-cats", boardMode === "moreCats");
   game.cards.forEach((card) => {
     const node = els.cardTemplate.content.firstElementChild.cloneNode(true);
     node.classList.toggle("revealed", card.revealed);
     if (card.revealedType) node.classList.add(`reveal-${card.revealedType}`);
+    if (boardMode === "moreCats") {
+      node.classList.add("image-only");
+      node.setAttribute("data-index", `#${card.cardIndex}`);
+    }
 
     const mySecret = game.mySecretSelection;
     if (mySecret === card.id && phase === "secretSelect") node.classList.add("picked");
@@ -526,10 +565,23 @@ function renderBoard(game, isClueGiver, isGuesser) {
     const canClick = cardClickable(game, card, isClueGiver, isGuesser);
     node.disabled = !canClick;
     node.querySelector(".selection-marker").textContent = mySecret === card.id ? "我的选择" : "";
-    node.querySelector("img").src = `https://http.cat/${card.code}.jpg`;
-    node.querySelector("img").alt = card.name;
-    node.querySelector("strong").textContent = card.name;
-    node.querySelector("small").textContent = card.hint;
+    const img = node.querySelector("img");
+    if (boardMode === "moreCats" && card.imageId) {
+      img.src = `https://cataas.com/cat/${encodeURIComponent(card.imageId)}?width=320&height=240`;
+      img.alt = `第${card.cardIndex}张喵`;
+    } else if (card.code) {
+      img.src = `https://http.cat/${card.code}.jpg`;
+      img.alt = card.name;
+    }
+    const strong = node.querySelector("strong");
+    const small = node.querySelector("small");
+    if (boardMode === "moreCats") {
+      strong.textContent = `#${card.cardIndex}`;
+      small.textContent = "";
+    } else {
+      strong.textContent = card.name;
+      small.textContent = card.hint;
+    }
     if (canClick) {
       node.addEventListener("click", () => handleCardClick(game, card));
     }

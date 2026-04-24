@@ -26,37 +26,81 @@ const DEFAULT_TIMERS = {
   hardLimit: 20 * 60_000,
 };
 
+const BOARD_MODES = ["classic", "moreCats"];
+
 const CATS = [
-  { code: 200, name: "顺利猫", hint: "事情很顺，大家都点头了。" },
-  { code: 201, name: "新朋友猫", hint: "刚刚加入，正在被介绍。" },
-  { code: 204, name: "安静猫", hint: "它什么也没说，但事情办好了。" },
-  { code: 300, name: "选择困难猫", hint: "面前有太多条路可以走。" },
-  { code: 301, name: "搬家猫", hint: "它已经换到新地址住了。" },
-  { code: 302, name: "临时搬家猫", hint: "只是短暂去了别的地方。" },
-  { code: 304, name: "没变化猫", hint: "看来看去，还是老样子。" },
-  { code: 400, name: "听不懂猫", hint: "别人说的话让它满头问号。" },
-  { code: 401, name: "没带票猫", hint: "想进去，但少了通行凭证。" },
-  { code: 403, name: "不准进门猫", hint: "门开着，但它被拦下了。" },
-  { code: 404, name: "迷路猫", hint: "怎么找都找不到地方。" },
-  { code: 405, name: "姿势不对猫", hint: "方法用错了，得换个方式。" },
-  { code: 408, name: "等太久猫", hint: "它等到快睡着了。" },
-  { code: 409, name: "吵架猫", hint: "两边说法对不上，卡住了。" },
-  { code: 410, name: "消失猫", hint: "原本在这里，现在真的没了。" },
-  { code: 413, name: "包太大猫", hint: "东西太大，怎么都塞不进去。" },
-  { code: 418, name: "茶壶猫", hint: "它坚持自己是一个茶壶。" },
-  { code: 423, name: "锁门猫", hint: "门被锁上，暂时打不开。" },
-  { code: 425, name: "太早猫", hint: "它来得太早，大家还没准备好。" },
-  { code: 429, name: "排队太长猫", hint: "人太多了，只能先等等。" },
-  { code: 451, name: "规则禁止猫", hint: "因为规矩，不能让它通过。" },
-  { code: 500, name: "崩溃猫", hint: "事情突然乱成一团。" },
-  { code: 502, name: "传话失败猫", hint: "中间人把话传坏了。" },
-  { code: 503, name: "临时关门猫", hint: "今天忙不过来，晚点再来。" },
-  { code: 504, name: "没等到猫", hint: "等了很久，另一边一直没回。" },
-  { code: 507, name: "塞满猫", hint: "空间不够，已经装不下了。" },
-  { code: 508, name: "绕圈猫", hint: "它一直在同一个地方打转。" },
-  { code: 511, name: "先登记猫", hint: "要先登记，才能继续往前。" },
-  { code: 521, name: "店员不在猫", hint: "想办事，但对面没人接待。" },
-  { code: 599, name: "断线猫", hint: "联系不上，像电话突然断了。" },
+  // 1xx 启动 / 思考
+  { code: 100, name: "跃跃欲试喵", hint: "刚看到开头就想动手。" },
+  { code: 102, name: "思考中喵", hint: "还在想，先别催。" },
+  { code: 103, name: "预告片喵", hint: "正片还没来，先甩几张剧照。" },
+
+  // 2xx 成功 / 搞定
+  { code: 200, name: "顺利喵", hint: "事情很顺，大家都点头了。" },
+  { code: 201, name: "新朋友喵", hint: "刚刚加入，正在被介绍。" },
+  { code: 202, name: "嗯嗯好好喵", hint: "答应得很爽，然后没有然后。" },
+  { code: 204, name: "安静喵", hint: "它什么也没说，但事情办好了。" },
+  { code: 206, name: "半成品喵", hint: "给你一半，剩下那半明天再说。" },
+  { code: 207, name: "呼朋引伴喵", hint: "一次带了一整群过来。" },
+  { code: 208, name: "重复表演喵", hint: "这个梗你已经讲过三次了。" },
+  { code: 226, name: "终于用上喵", hint: "之前屯的东西，现在才派上用场。" },
+
+  // 3xx 变道 / 转介
+  { code: 300, name: "选择困难喵", hint: "面前有太多条路可以走。" },
+  { code: 301, name: "搬家喵", hint: "它已经换到新地址住了。" },
+  { code: 302, name: "临时搬家喵", hint: "只是短暂去了别的地方。" },
+  { code: 303, name: "重新指路喵", hint: "哦，这事你得去那边问。" },
+  { code: 304, name: "没变化喵", hint: "看来看去，还是老样子。" },
+  { code: 305, name: "中间人喵", hint: "别直接找，先通过它。" },
+  { code: 307, name: "今天走侧门喵", hint: "正门暂时不开，从边上绕。" },
+  { code: 308, name: "永久跳转喵", hint: "旧路封了，以后都走新的。" },
+
+  // 4xx 社交 / 玩家问题
+  { code: 400, name: "听不懂喵", hint: "别人说的话让它满头问号。" },
+  { code: 401, name: "没带票喵", hint: "想进去，但少了通行凭证。" },
+  { code: 402, name: "先付钱喵", hint: "感情归感情，账还是要算的。" },
+  { code: 403, name: "不准进门喵", hint: "门开着，但它被拦下了。" },
+  { code: 404, name: "迷路喵", hint: "怎么找都找不到地方。" },
+  { code: 405, name: "姿势不对喵", hint: "方法用错了，得换个方式。" },
+  { code: 406, name: "不合口味喵", hint: "不是不行，是它看不上。" },
+  { code: 408, name: "等太久喵", hint: "它等到快睡着了。" },
+  { code: 409, name: "吵架喵", hint: "两边说法对不上，卡住了。" },
+  { code: 410, name: "消失喵", hint: "原本在这里，现在真的没了。" },
+  { code: 411, name: "说清楚喵", hint: "总量没讲明白，不让过。" },
+  { code: 412, name: "条件不够喵", hint: "还没够资格线。" },
+  { code: 413, name: "包太大喵", hint: "东西太大，怎么都塞不进去。" },
+  { code: 414, name: "啰嗦喵", hint: "一口气讲到对方听不完。" },
+  { code: 415, name: "格式不对喵", hint: "不吃你这一套。" },
+  { code: 416, name: "过头了喵", hint: "刚好超出了边界。" },
+  { code: 417, name: "想多了喵", hint: "期待和现实差得有点远。" },
+  { code: 418, name: "茶壶喵", hint: "它坚持自己是一个茶壶。" },
+  { code: 420, name: "冷静一下喵", hint: "别激动，先吸气。" },
+  { code: 421, name: "发错人喵", hint: "这条消息本来是给别人的。" },
+  { code: 422, name: "算不清喵", hint: "你写的它实在看不懂。" },
+  { code: 423, name: "锁门喵", hint: "门被锁上，暂时打不开。" },
+  { code: 424, name: "连累喵", hint: "上一环塌了，它也跟着黄。" },
+  { code: 425, name: "太早喵", hint: "它来得太早，大家还没准备好。" },
+  { code: 426, name: "该升级喵", hint: "版本太旧，先换新的。" },
+  { code: 428, name: "先表态喵", hint: "没先签字，后面都不算。" },
+  { code: 429, name: "排队太长喵", hint: "人太多了，只能先等等。" },
+  { code: 431, name: "名片太长喵", hint: "头衔一堆，自我介绍没完。" },
+  { code: 444, name: "已读不回喵", hint: "看见了，就是不接话。" },
+  { code: 450, name: "家长在场喵", hint: "这话不能当着孩子讲。" },
+  { code: 451, name: "规则禁止喵", hint: "因为规矩，不能让它通过。" },
+
+  // 5xx 系统 / 生活崩溃
+  { code: 500, name: "崩溃喵", hint: "事情突然乱成一团。" },
+  { code: 501, name: "没学过喵", hint: "这活儿它还没学会呢。" },
+  { code: 502, name: "传话失败喵", hint: "中间人把话传坏了。" },
+  { code: 503, name: "临时关门喵", hint: "今天忙不过来，晚点再来。" },
+  { code: 504, name: "没等到喵", hint: "等了很久，另一边一直没回。" },
+  { code: 507, name: "塞满喵", hint: "空间不够，已经装不下了。" },
+  { code: 508, name: "绕圈喵", hint: "它一直在同一个地方打转。" },
+  { code: 509, name: "流量超限喵", hint: "这个月流量已经用光。" },
+  { code: 511, name: "先登记喵", hint: "要先登记，才能继续往前。" },
+  { code: 521, name: "店员不在喵", hint: "想办事，但对面没人接待。" },
+  { code: 522, name: "熬夜断片喵", hint: "熬到最后已经失去意识。" },
+  { code: 525, name: "聊不到一起喵", hint: "刚开头就发现对不上频道。" },
+  { code: 599, name: "断线喵", hint: "联系不上，像电话突然断了。" },
 ];
 
 class CatnamesGame {
@@ -73,6 +117,11 @@ class CatnamesGame {
     if (!isModeAllowed(this.mode, this.players.length)) {
       throw new Error("这个人数不支持选定的模式");
     }
+    this.boardMode = BOARD_MODES.includes(options.boardMode) ? options.boardMode : "classic";
+    this.imageIds = Array.isArray(options.imageIds) ? [...options.imageIds] : null;
+    if (this.boardMode === "moreCats" && (!this.imageIds || this.imageIds.length < 25)) {
+      throw new Error("更多喵模式需要 25 张图片，请稍后重试");
+    }
     this.timers = { ...DEFAULT_TIMERS, ...(options.timers || {}) };
     this.status = "waiting";
     this.cards = [];
@@ -83,6 +132,7 @@ class CatnamesGame {
     this.mistakes = 0;
     this.maxMistakes = 3;
     this.clue = null;
+    this.guessesLeft = 0;
     this.votes = {};
     this.secretSelections = {};
     this.revealedSelections = null;
@@ -108,7 +158,7 @@ class CatnamesGame {
     delete this.votes[playerId];
     delete this.secretSelections[playerId];
     if (this.players.length < 2) {
-      this.finish("玩家不足，本局结束。");
+      this.finish("玩家不足，本局结束。", { abort: true });
     }
   }
 
@@ -122,6 +172,7 @@ class CatnamesGame {
     const error = validateClueWord(cleanWord, this.cards);
     if (error) throw new Error(error);
     this.clue = { word: cleanWord, count: cleanCount };
+    this.guessesLeft = cleanCount === 0 ? 1 : cleanCount + 1;
     this.votes = {};
     this.secretSelections = {};
     this.revealedSelections = null;
@@ -263,15 +314,20 @@ class CatnamesGame {
   endTurn(playerId) {
     this.assertPlaying();
     const current = this.getCurrentClueGiver();
-    const isTeamGuesser = this.mode === "team_vs_team" && this.getCurrentGuessers().some((player) => player.id === playerId);
-    if (playerId !== current.id && !isTeamGuesser) throw new Error("现在不能由你结束回合");
+    const isGuesser =
+      this.mode === "team_vs_team"
+        ? this.getCurrentGuessers().some((player) => player.id === playerId)
+        : this.mode === "duet_coop"
+          ? this.players.some((player) => player.id === playerId)
+          : false;
+    if (playerId !== current.id && !isGuesser) throw new Error("现在不能由你结束回合");
     this.advanceTurn("当前回合结束。");
   }
 
   tick(nowMs = now()) {
     if (this.status !== "playing") return false;
     if (this.gameEndsAt && nowMs >= this.gameEndsAt) {
-      this.finish("总时长用尽，按当前进度判负。");
+      this.finish("总时长用尽，按当前进度判负。", { teamLost: true });
       return true;
     }
     if (!this.phaseEndsAt || nowMs < this.phaseEndsAt) return false;
@@ -304,7 +360,11 @@ class CatnamesGame {
   resolveTimedVote() {
     const entries = Object.entries(this.votes);
     if (entries.length === 0) {
-      this.advanceTurn("投票超时且无人投票，回合结束。");
+      if (this.phase === "quickContinue") {
+        this.advanceTurn("继续猜超时无人投票，回合结束。");
+      } else {
+        this.advanceTurn("投票超时且无人投票，回合结束。");
+      }
       return;
     }
     const counts = new Map();
@@ -332,6 +392,7 @@ class CatnamesGame {
     return {
       mode: this.mode,
       modeName: MODE_TEXT[this.mode],
+      boardMode: this.boardMode,
       phase: this.phase,
       phaseName: this.phase ? PHASE_TEXT[this.phase] : null,
       phaseEndsAt: this.phaseEndsAt,
@@ -344,6 +405,7 @@ class CatnamesGame {
       maxMistakes: this.maxMistakes,
       currentTeam: this.currentTeam,
       clue: this.clue,
+      guessesLeft: this.guessesLeft,
       secretSelectionIds: this.getPublicSelectionIds(),
       mySecretSelection: this.secretSelections[playerId] || null,
       revealedSelections: this.getPublicRevealedSelections(),
@@ -388,20 +450,32 @@ class CatnamesGame {
   }
 
   buildBoard() {
-    const cats = shuffle(CATS).slice(0, 25);
+    const cardCount = 25;
+    const baseCards = this.boardMode === "moreCats"
+      ? this.imageIds.slice(0, cardCount).map((imageId, index) => ({
+          imageId,
+          cardIndex: index + 1,
+          name: "",
+          hint: "",
+          code: null,
+        }))
+      : shuffle(CATS)
+          .slice(0, cardCount)
+          .map((cat, index) => ({ ...cat, cardIndex: index + 1 }));
+
     if (this.mode === "duet_coop") {
       const keyA = shuffle([...Array(9).fill("target"), ...Array(13).fill("neutral"), ...Array(2).fill("danger"), "assassin"]);
       const keyB = shuffle([...Array(9).fill("target"), ...Array(13).fill("neutral"), ...Array(2).fill("danger"), "assassin"]);
-      return cats.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, keyA: keyA[index], keyB: keyB[index] }));
+      return baseCards.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, keyA: keyA[index], keyB: keyB[index] }));
     }
     if (this.mode === "semi_coop") {
       const types = shuffle([...Array(9).fill("target"), ...Array(13).fill("neutral"), ...Array(2).fill("danger"), "assassin"]);
-      return cats.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, type: types[index] }));
+      return baseCards.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, type: types[index] }));
     }
     const firstTeam = this.currentTeam;
     const secondTeam = otherTeam(firstTeam);
     const types = shuffle([...Array(9).fill(firstTeam), ...Array(8).fill(secondTeam), ...Array(7).fill("neutral"), "assassin"]);
-    return cats.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, type: types[index] }));
+    return baseCards.map((cat, index) => ({ ...cat, id: `card-${index}`, revealed: false, type: types[index] }));
   }
 
   reveal(cardId, scoringPlayerIds = [], meta = {}) {
@@ -411,20 +485,21 @@ class CatnamesGame {
     const clueGiver = this.getCurrentClueGiver();
     this.lastResolution = {
       cardId,
-      cardName: card.name,
+      cardName: card.name || `第${card.cardIndex}张`,
       revealedType: type,
       scoringPlayerIds: [...scoringPlayerIds],
       source: meta.source || this.phase,
     };
     this.votes = {};
     this.secretSelections = {};
+    this.revealedSelections = null;
 
     if (type === "assassin") {
       this.addScore(clueGiver.id, -3);
       if (this.mode === "team_vs_team") {
-        this.finish(`${teamName(this.currentTeam)}翻到失败猫，${teamName(otherTeam(this.currentTeam))}获胜。`);
+        this.finish(`${teamName(this.currentTeam)}翻到失败喵，${teamName(otherTeam(this.currentTeam))}获胜。`, { teamLost: true });
       } else {
-        this.finish("翻到失败猫，本局失败。");
+        this.finish("翻到失败喵，本局失败。", { teamLost: true });
       }
       return;
     }
@@ -441,20 +516,27 @@ class CatnamesGame {
         scoringPlayerIds.forEach((id) => this.addScore(id, 1));
       }
       if (this.countTargetsLeft() === 0) {
-        this.finish("所有目标猫都找到了，团队胜利。");
+        this.finish("所有目标喵都找到了，团队胜利。");
+        return;
+      }
+      this.guessesLeft = Math.max(0, (this.guessesLeft || 1) - 1);
+      if (this.guessesLeft <= 0) {
+        this.clue = null;
+        this.advanceTurn("关键词次数用尽，回合结束。");
         return;
       }
       if (this.mode === "semi_coop") {
         this.enterPhase(
           "quickContinue",
           this.timers.quickContinue,
-          "猜中目标猫。提示者可以带队再猜一张（公开投票）或收手。",
+          `猜中目标喵。还能再猜 ${this.guessesLeft} 张，提示者带队投票或收手。`,
         );
         this.continueOffered = true;
         return;
       }
-      this.clue = null;
-      this.advanceTurn("猜中目标猫。");
+      this.phase = "reveal";
+      this.phaseEndsAt = null;
+      this.message = `猜中目标喵，还能再猜 ${this.guessesLeft} 张。`;
       return;
     }
 
@@ -463,33 +545,39 @@ class CatnamesGame {
       this.addScore(clueGiver.id, -1);
       scoringPlayerIds.forEach((id) => this.addScore(id, -1));
       if (this.mistakes >= this.maxMistakes) {
-        this.finish("危险猫次数用尽，本局失败。");
+        this.finish("危险喵次数用尽，本局失败。", { teamLost: true });
         return;
       }
       this.clue = null;
-      this.advanceTurn("猜到危险猫，扣掉一次机会。");
+      this.advanceTurn("猜到危险喵，扣掉一次机会。");
       return;
     }
 
     this.clue = null;
-    this.advanceTurn("这是路过猫，当前回合结束。");
+    this.advanceTurn("这是路过喵，当前回合结束。");
   }
 
   revealTeamCard(type) {
     if (type === this.currentTeam) {
       this.addScore(this.getCurrentClueGiver().id, 2);
       if (this.cards.filter((card) => card.type === this.currentTeam && !card.revealed).length === 0) {
-        this.finish(`${teamName(this.currentTeam)}找齐所有猫，获得胜利。`);
+        this.finish(`${teamName(this.currentTeam)}找齐所有喵，获得胜利。`);
+        return;
+      }
+      this.guessesLeft = Math.max(0, (this.guessesLeft || 1) - 1);
+      if (this.guessesLeft <= 0) {
+        this.clue = null;
+        this.advanceTurn(`${teamName(this.currentTeam)}关键词次数用尽，换队行动。`);
         return;
       }
       this.phase = "reveal";
-      this.message = `${teamName(this.currentTeam)}猜中，可以继续猜。`;
+      this.message = `${teamName(this.currentTeam)}猜中，还能再猜 ${this.guessesLeft} 张。`;
       return;
     }
     if (type === otherTeam(this.currentTeam)) {
       this.addScore(this.getCurrentClueGiver().id, -1);
       if (this.cards.filter((card) => card.type === type && !card.revealed).length === 0) {
-        this.finish(`${teamName(type)}被帮忙找齐了猫，获得胜利。`);
+        this.finish(`${teamName(type)}被帮忙找齐了喵，获得胜利。`);
         return;
       }
     }
@@ -499,6 +587,7 @@ class CatnamesGame {
 
   advanceTurn(message) {
     this.clue = null;
+    this.guessesLeft = 0;
     this.votes = {};
     this.secretSelections = {};
     this.revealedSelections = null;
@@ -512,7 +601,7 @@ class CatnamesGame {
     }
     this.round += 1;
     if (this.mode === "duet_coop" && this.round > this.maxRounds) {
-      this.finish("回合数用尽，本局失败。");
+      this.finish("回合数用尽，本局失败。", { teamLost: true });
       return;
     }
     this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
@@ -563,9 +652,11 @@ class CatnamesGame {
     const secret = this.getSecretFor(card, viewer);
     return {
       id: card.id,
-      code: card.code,
-      name: card.name,
-      hint: card.hint,
+      code: card.code || null,
+      imageId: card.imageId || null,
+      cardIndex: card.cardIndex,
+      name: card.name || "",
+      hint: card.hint || "",
       revealed: card.revealed,
       revealedType: card.revealed ? this.getRevealType(card) : null,
       secretType: secret,
@@ -619,7 +710,7 @@ class CatnamesGame {
     return Object.fromEntries(
       Object.entries(this.votes).map(([playerId, cardId]) => {
         const card = this.cards.find((item) => item.id === cardId);
-        return [playerId, card?.name || "未知猫"];
+        return [playerId, cardLabel(card)];
       }),
     );
   }
@@ -634,7 +725,7 @@ class CatnamesGame {
     return Object.fromEntries(
       Object.entries(this.revealedSelections).map(([playerId, cardId]) => {
         const card = this.cards.find((item) => item.id === cardId);
-        return [playerId, { cardId, cardName: card?.name || "未知猫" }];
+        return [playerId, { cardId, cardName: cardLabel(card) }];
       }),
     );
   }
@@ -644,7 +735,7 @@ class CatnamesGame {
     const unique = new Set(Object.values(this.revealedSelections || {}));
     return this.cards
       .filter((card) => unique.has(card.id))
-      .map((card) => ({ cardId: card.id, cardName: card.name }));
+      .map((card) => ({ cardId: card.id, cardName: cardLabel(card) }));
   }
 
   findOpenCard(cardId) {
@@ -674,11 +765,9 @@ class CatnamesGame {
     if (player) player.score += points;
   }
 
-  finish(message) {
-    const teamLost = /失败|判负|刺客|用尽/.test(message);
-    if (this.mode === "semi_coop" && teamLost) {
+  finish(message, options = {}) {
+    if (this.mode === "semi_coop" && options.teamLost) {
       this.players.forEach((player) => {
-        if (player.role !== "clue_giver" && player.role !== "guesser") return;
         player.score = 0;
       });
     }
@@ -688,6 +777,13 @@ class CatnamesGame {
     this.gameEndsAt = null;
     this.message = message;
   }
+}
+
+function cardLabel(card) {
+  if (!card) return "未知喵";
+  if (card.name) return card.name;
+  if (card.cardIndex) return `第${card.cardIndex}张`;
+  return "未知喵";
 }
 
 function validateClueWord(word, cards) {
@@ -704,6 +800,7 @@ function validateClueWord(word, cards) {
   const characters = new Set(word.replace(/\s/g, ""));
   for (const card of cards) {
     if (card.revealed) continue;
+    if (!card.name) continue;
     for (const ch of card.name) {
       if (characters.has(ch)) {
         return `线索不能包含棋盘词里的字符"${ch}"`;
@@ -721,8 +818,7 @@ function clampCount(raw) {
 
 function getDefaultMode(count) {
   if (count === 2) return "duet_coop";
-  if (count >= 3 && count <= 4) return "semi_coop";
-  if (count >= 5 && count <= 6) return "semi_coop";
+  if (count >= 3 && count <= 6) return "semi_coop";
   if (count >= 7 && count <= 8) return "team_vs_team";
   return null;
 }
@@ -761,6 +857,8 @@ function now() {
 
 module.exports = {
   CatnamesGame,
+  CATS,
+  BOARD_MODES,
   getMode,
   getDefaultMode,
   getAllowedModes,

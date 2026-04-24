@@ -81,9 +81,16 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("startGame", (ack) => {
+  socket.on("setBoardMode", ({ boardMode }, ack) => {
     tryRoomAction(socket, ack, (room, player) => {
-      room.startGame(player.id);
+      room.setBoardMode(player.id, boardMode);
+      broadcastRoom(room);
+    });
+  });
+
+  socket.on("startGame", (ack) => {
+    tryRoomActionAsync(socket, ack, async (room, player) => {
+      await room.startGame(player.id);
       broadcastRoom(room);
     });
   });
@@ -199,6 +206,20 @@ function tryRoomAction(socket, ack, fn) {
     fn(room, player);
     return {};
   });
+}
+
+async function tryRoomActionAsync(socket, ack, fn) {
+  try {
+    const room = rooms.findBySocket(socket.id);
+    if (!room) throw new Error("你还没有加入房间");
+    const player = room.getPlayerBySocket(socket.id);
+    if (!player) throw new Error("连接状态已经失效，请重新加入房间");
+    await fn(room, player);
+    ack?.({ ok: true });
+  } catch (error) {
+    console.error("[tryRoomActionAsync]", error);
+    ack?.({ ok: false, error: error.message });
+  }
 }
 
 function broadcastRoom(room) {

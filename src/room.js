@@ -1,5 +1,6 @@
 const crypto = require("crypto");
-const { CatnamesGame, isModeAllowed, getDefaultMode } = require("./game/catnames");
+const { CatnamesGame, isModeAllowed, getDefaultMode, BOARD_MODES } = require("./game/catnames");
+const catPool = require("./catPool");
 
 const DISCONNECT_GRACE_MS = 120_000;
 
@@ -70,6 +71,8 @@ class Room {
     this.disconnectTimers = new Map();
     this.game = null;
     this.modePreference = null;
+    this.boardMode = "classic";
+    this.lastBoardError = null;
     this.phaseTimer = null;
     this.onTick = null;
   }
@@ -155,7 +158,14 @@ class Room {
     this.modePreference = mode;
   }
 
-  startGame(playerId) {
+  setBoardMode(playerId, boardMode) {
+    this.assertHost(playerId);
+    if (!BOARD_MODES.includes(boardMode)) throw new Error("不支持的图片模式");
+    this.boardMode = boardMode;
+    this.lastBoardError = null;
+  }
+
+  async startGame(playerId) {
     this.assertHost(playerId);
     const players = this.connectedPlayers;
     if (players.length < 2) throw new Error("至少需要 2 名在线玩家");
@@ -164,7 +174,18 @@ class Room {
     if (!mode || !isModeAllowed(mode, count)) {
       mode = getDefaultMode(count);
     }
-    this.game = new CatnamesGame(players, { mode });
+    const options = { mode, boardMode: this.boardMode };
+    if (this.boardMode === "moreCats") {
+      try {
+        options.imageIds = await catPool.pickRandom(25);
+      } catch (error) {
+        console.error("[moreCats] 图片池抓取失败，回退到经典模式:", error.message);
+        this.lastBoardError = `更多喵图片池暂不可用：${error.message}`;
+        options.boardMode = "classic";
+        delete options.imageIds;
+      }
+    }
+    this.game = new CatnamesGame(players, options);
     this.game.start();
     this.startPhaseTimer();
   }
@@ -225,6 +246,8 @@ class Room {
       hostId: this.hostId,
       meId: playerId,
       modePreference: this.modePreference,
+      boardMode: this.boardMode,
+      lastBoardError: this.lastBoardError,
       players: this.players.map((player) => ({
         id: player.id,
         name: player.name,

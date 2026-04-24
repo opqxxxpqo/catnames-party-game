@@ -694,6 +694,51 @@ h2 {
   opacity: 1;
 }
 
+.cat-card.image-only {
+  grid-template-rows: 1fr;
+}
+
+.cat-card.image-only .image-wrap {
+  height: 100%;
+}
+
+.cat-card.image-only .card-copy {
+  display: none;
+}
+
+.cat-card.image-only strong,
+.cat-card.image-only small {
+  display: none;
+}
+
+.cat-card.image-only::before {
+  content: attr(data-index);
+  position: absolute;
+  z-index: 2;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: rgba(10, 10, 10, 0.78);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.board-more-cats .cat-card {
+  position: relative;
+}
+
+.board-more-cats .cat-card > .card-copy {
+  display: none;
+}
+
+.board-more-cats .cat-card .selection-marker {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .cat-card .secret-marker {
   position: absolute;
   z-index: 2;
@@ -851,13 +896,14 @@ h2 {
   padding: 3px 4px;
   overflow: hidden;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
   font-size: 9px;
   font-weight: 800;
   line-height: 1.05;
   color: rgba(244, 244, 241, 0.92);
   letter-spacing: 0;
-  text-align: left;
+  text-align: center;
   word-break: break-all;
 }
 
