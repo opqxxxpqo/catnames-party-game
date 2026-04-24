@@ -39,6 +39,7 @@ io.on("connection", (socket) => {
       const room = rooms.createRoom();
       const player = room.addClient(socket.id, cleanName(name));
       rooms.registerSocket(socket.id, room);
+      room.onTick = () => broadcastRoom(room);
       socket.join(room.code);
       broadcastRoom(room);
       return { roomCode: room.code, playerId: player.id };
@@ -52,6 +53,7 @@ io.on("connection", (socket) => {
       if (!room) throw new Error("没有找到这个房间");
       const player = room.addClient(socket.id, cleanName(name));
       rooms.registerSocket(socket.id, room);
+      room.onTick = () => broadcastRoom(room);
       socket.join(room.code);
       broadcastRoom(room);
       return { roomCode: room.code, playerId: player.id };
@@ -65,9 +67,17 @@ io.on("connection", (socket) => {
       if (!room) throw new Error("房间已经不存在");
       const player = room.resumeClient(socket.id, String(playerId || ""), String(name || "").trim().slice(0, 10));
       rooms.registerSocket(socket.id, room);
+      room.onTick = () => broadcastRoom(room);
       socket.join(room.code);
       broadcastRoom(room);
       return { roomCode: room.code, playerId: player.id };
+    });
+  });
+
+  socket.on("setModePreference", ({ mode }, ack) => {
+    tryRoomAction(socket, ack, (room, player) => {
+      room.setModePreference(player.id, mode || null);
+      broadcastRoom(room);
     });
   });
 
@@ -79,10 +89,41 @@ io.on("connection", (socket) => {
   });
 
   socket.on("submitClue", ({ word, count }, ack) => {
-    console.log("[submitClue]", socket.id, word, count);
     tryRoomAction(socket, ack, (room, player) => {
       if (!room.game) throw new Error("游戏还没有开始");
       room.game.submitClue(player.id, word, count);
+      broadcastRoom(room);
+    });
+  });
+
+  socket.on("submitSelection", ({ cardId }, ack) => {
+    tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
+      room.game.submitSelection(player.id, cardId);
+      broadcastRoom(room);
+    });
+  });
+
+  socket.on("advanceToVote", (ack) => {
+    tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
+      room.game.advanceToVote(player.id);
+      broadcastRoom(room);
+    });
+  });
+
+  socket.on("decideFromSelections", ({ cardId }, ack) => {
+    tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
+      room.game.decideFromSelections(player.id, cardId);
+      broadcastRoom(room);
+    });
+  });
+
+  socket.on("declineContinue", (ack) => {
+    tryRoomAction(socket, ack, (room, player) => {
+      if (!room.game) throw new Error("游戏还没有开始");
+      room.game.declineContinue(player.id);
       broadcastRoom(room);
     });
   });

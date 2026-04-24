@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { CatnamesGame } = require("./game/catnames");
+const { CatnamesGame, isModeAllowed, getDefaultMode } = require("./game/catnames");
 
 const DISCONNECT_GRACE_MS = 120_000;
 
@@ -39,6 +39,7 @@ class RoomRegistry {
     this.socketToRoom.delete(socketId);
     room.disconnectClient(socketId, () => {
       if (room.players.length === 0) {
+        room.dispose();
         this.rooms.delete(room.code);
         return;
       }
@@ -53,6 +54,7 @@ class RoomRegistry {
     this.socketToRoom.delete(socketId);
     room.removeClientBySocket(socketId);
     if (room.players.length === 0) {
+      room.dispose();
       this.rooms.delete(room.code);
       return null;
     }
@@ -67,6 +69,9 @@ class Room {
     this.clients = new Map();
     this.disconnectTimers = new Map();
     this.game = null;
+    this.modePreference = null;
+    this.phaseTimer = null;
+    this.onTick = null;
   }
 
   get players() {
@@ -130,21 +135,77 @@ class Room {
     }
     if (this.game) {
       this.game.removePlayer(playerId);
-      if (this.players.length < 2) this.game = null;
+      if (this.players.length < 2) {
+        this.game = null;
+        this.stopPhaseTimer();
+      }
     }
+  }
+
+  setModePreference(playerId, mode) {
+    this.assertHost(playerId);
+    const count = this.connectedPlayers.length;
+    if (mode == null) {
+      this.modePreference = null;
+      return;
+    }
+    if (!isModeAllowed(mode, count)) {
+      throw new Error("当前人数不能选这个模式");
+    }
+    this.modePreference = mode;
   }
 
   startGame(playerId) {
     this.assertHost(playerId);
     const players = this.connectedPlayers;
     if (players.length < 2) throw new Error("至少需要 2 名在线玩家");
-    this.game = new CatnamesGame(players);
+    const count = players.length;
+    let mode = this.modePreference;
+    if (!mode || !isModeAllowed(mode, count)) {
+      mode = getDefaultMode(count);
+    }
+    this.game = new CatnamesGame(players, { mode });
     this.game.start();
+    this.startPhaseTimer();
   }
 
   backToLobby(playerId) {
     this.assertHost(playerId);
     this.game = null;
+    this.stopPhaseTimer();
+  }
+
+  startPhaseTimer() {
+    this.stopPhaseTimer();
+    if (!this.game || this.game.status !== "playing") return;
+    this.phaseTimer = setInterval(() => {
+      if (!this.game) {
+        this.stopPhaseTimer();
+        return;
+      }
+      const changed = this.game.tick();
+      if (changed) {
+        this.onTick?.();
+      }
+      if (this.game?.status !== "playing") {
+        this.stopPhaseTimer();
+      }
+    }, 500);
+    if (typeof this.phaseTimer.unref === "function") this.phaseTimer.unref();
+  }
+
+  stopPhaseTimer() {
+    if (this.phaseTimer) {
+      clearInterval(this.phaseTimer);
+      this.phaseTimer = null;
+    }
+  }
+
+  dispose() {
+    this.stopPhaseTimer();
+    for (const playerId of [...this.disconnectTimers.keys()]) {
+      this.clearDisconnectTimer(playerId);
+    }
   }
 
   getPlayerBySocket(socketId) {
@@ -163,6 +224,7 @@ class Room {
       roomCode: this.code,
       hostId: this.hostId,
       meId: playerId,
+      modePreference: this.modePreference,
       players: this.players.map((player) => ({
         id: player.id,
         name: player.name,

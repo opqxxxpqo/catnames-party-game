@@ -1,7 +1,27 @@
 const socket = io();
 let roomState = null;
 let selectedVoteCardId = null;
+let timerInterval = null;
+let lastPhaseKey = null;
 const sessionKey = "catnames.session.v1";
+
+const MODE_LABEL = {
+  duet_coop: "2 人合作",
+  semi_coop: "3–5 人半合作",
+  team_vs_team: "6–8 人阵营对抗",
+};
+
+const PHASE_LABEL = {
+  clue: "提示",
+  secretSelect: "秘密选词",
+  reveal: "翻牌",
+  discuss: "讨论",
+  vote: "投票",
+  decide: "决定",
+  quickContinue: "继续猜",
+  settle: "结算",
+  finished: "已结束",
+};
 
 const els = {
   connectScreen: document.querySelector("#connectScreen"),
@@ -15,6 +35,7 @@ const els = {
   roomCode: document.querySelector("#roomCode"),
   playerCount: document.querySelector("#playerCount"),
   modeName: document.querySelector("#modeName"),
+  modePicker: document.querySelector("#modePicker"),
   playerList: document.querySelector("#playerList"),
   startButton: document.querySelector("#startButton"),
   leaveButton: document.querySelector("#leaveButton"),
@@ -24,17 +45,14 @@ const els = {
   rightStat: document.querySelector("#rightStat"),
   turnLabel: document.querySelector("#turnLabel"),
   messageLabel: document.querySelector("#messageLabel"),
-  viewerHint: document.querySelector("#viewerHint"),
-  cluePanel: document.querySelector("#cluePanel"),
-  clueWord: document.querySelector("#clueWord"),
-  clueCount: document.querySelector("#clueCount"),
-  setClueButton: document.querySelector("#setClueButton"),
-  endTurnButton: document.querySelector("#endTurnButton"),
+  timerBarFill: document.querySelector("#timerBarFill"),
+  phasePill: document.querySelector("#phasePill"),
+  phaseHeading: document.querySelector("#phaseHeading"),
+  phaseBody: document.querySelector("#phaseBody"),
+  phaseInput: document.querySelector("#phaseInput"),
+  phaseActions: document.querySelector("#phaseActions"),
   clueDisplay: document.querySelector("#clueDisplay"),
-  votePanel: document.querySelector("#votePanel"),
-  voteHint: document.querySelector("#voteHint"),
-  voteList: document.querySelector("#voteList"),
-  resolveVoteButton: document.querySelector("#resolveVoteButton"),
+  viewerHint: document.querySelector("#viewerHint"),
   board: document.querySelector("#board"),
   cardTemplate: document.querySelector("#cardTemplate"),
   scoreList: document.querySelector("#scoreList"),
@@ -95,16 +113,6 @@ els.leaveButton.addEventListener("click", () => {
   window.location.reload();
 });
 
-els.setClueButton.addEventListener("click", () => {
-  emitWithAck("submitClue", {
-    word: els.clueWord.value,
-    count: els.clueCount.value,
-  });
-});
-
-els.endTurnButton.addEventListener("click", () => emitWithAck("endTurn"));
-els.resolveVoteButton.addEventListener("click", () => emitWithAck("resolveVote"));
-
 function emitWithAck(eventName, payload, after) {
   const data = typeof payload === "function" || payload == null ? {} : payload;
   const callback = typeof payload === "function" ? payload : after;
@@ -132,13 +140,41 @@ function render() {
   els.gameScreen.classList.toggle("hidden", !game);
 
   renderLobby();
-  if (game) renderGame(game);
+  if (game) {
+    renderGame(game);
+  } else {
+    stopTimer();
+  }
 }
 
 function renderLobby() {
-  els.playerCount.textContent = roomState.players.length;
-  els.modeName.textContent = getModeName(roomState.players.length);
-  els.startButton.disabled = roomState.meId !== roomState.hostId || !getMode(roomState.players.length);
+  const count = roomState.players.length;
+  els.playerCount.textContent = count;
+  const allowed = getAllowedModes(count);
+  const pref = roomState.modePreference;
+  const activeMode = pref && allowed.includes(pref) ? pref : allowed[0] || null;
+  els.modeName.textContent = activeMode ? MODE_LABEL[activeMode] : "需要 2-8 人";
+
+  const amHost = roomState.meId === roomState.hostId;
+  els.modePicker.innerHTML = "";
+  const MODE_OPTIONS = [
+    { mode: "duet_coop", label: "2 人合作" },
+    { mode: "semi_coop", label: "3–5 人半合作" },
+    { mode: "team_vs_team", label: "6–8 人对抗" },
+  ];
+  MODE_OPTIONS.forEach(({ mode, label }) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `mode-chip ${activeMode === mode ? "active" : ""}`;
+    chip.textContent = label;
+    const enabled = allowed.includes(mode) && amHost && allowed.length > 1;
+    chip.disabled = !enabled;
+    chip.addEventListener("click", () => {
+      emitWithAck("setModePreference", { mode });
+    });
+    els.modePicker.append(chip);
+  });
+  els.startButton.disabled = !amHost || allowed.length === 0;
   els.playerList.innerHTML = "";
   roomState.players.forEach((player, index) => {
     const li = document.createElement("li");
@@ -161,70 +197,324 @@ function renderGame(game) {
   els.rightStat.textContent = game.stats.rightValue;
   els.turnLabel.textContent = makeTurnLabel(game, clueGiver);
   els.messageLabel.textContent = game.message;
-  els.clueDisplay.textContent = game.clue ? `线索：${game.clue.word}，${game.clue.count} 只` : "还没有线索";
-  els.setClueButton.disabled = !isClueGiver || game.status !== "playing" || Boolean(game.clue);
-  els.endTurnButton.disabled = game.status !== "playing" || (!isClueGiver && !(game.mode === "team_vs_team" && isGuesser));
+  if (game.clue) {
+    els.clueDisplay.innerHTML = `<strong>${escapeHtml(game.clue.word)}</strong> <span class="tag accent">${game.clue.count}</span>`;
+  } else {
+    els.clueDisplay.textContent = "还没有线索";
+  }
   els.restartButton.disabled = !isHost;
   els.backToLobbyButton.disabled = !isHost;
   els.viewerHint.textContent = makeViewerHint(game, me, clueGiver);
   els.modeRules.textContent = makeModeRules(game.mode);
 
-  renderBoard(game, isGuesser);
-  renderVotes(game, isClueGiver, isGuesser);
+  if (game.phase !== lastPhaseKey) {
+    selectedVoteCardId = null;
+    lastPhaseKey = game.phase;
+  }
+
+  renderPhasePanel(game, me, isClueGiver, isGuesser);
+  renderBoard(game, isClueGiver, isGuesser);
   renderScores(game);
+  startTimer(game.phaseEndsAt);
 }
 
-function renderBoard(game, isGuesser) {
+function renderPhasePanel(game, me, isClueGiver, isGuesser) {
+  const phase = game.phase;
+  els.phasePill.textContent = PHASE_LABEL[phase] || "等待";
+  els.phaseHeading.textContent = phaseHeadingText(game, isClueGiver, isGuesser);
+  els.phaseBody.textContent = phaseBodyText(game, isClueGiver, isGuesser);
+  els.phaseInput.innerHTML = "";
+  els.phaseActions.innerHTML = "";
+
+  if (game.status !== "playing") return;
+
+  if (phase === "clue") {
+    renderCluePanel(game, isClueGiver);
+  } else if (phase === "secretSelect") {
+    renderSecretSelectPanel(game, isGuesser);
+  } else if (phase === "reveal") {
+    renderFreeRevealPanel(game, isClueGiver, isGuesser);
+  } else if (phase === "discuss") {
+    renderDiscussPanel(game, isClueGiver);
+  } else if (phase === "vote" || phase === "quickContinue") {
+    renderVotePanel(game, isClueGiver, isGuesser);
+  } else if (phase === "decide") {
+    renderDecidePanel(game, isClueGiver);
+  }
+}
+
+function phaseHeadingText(game, isClueGiver, isGuesser) {
+  const phase = game.phase;
+  if (game.status === "finished") return "本局结束";
+  if (phase === "clue") return isClueGiver ? "轮到你出提示" : "等待提示者出牌";
+  if (phase === "secretSelect") return isGuesser ? "秘密选出一张猫牌" : "等待猜测者选词";
+  if (phase === "reveal") return isGuesser ? "点击牌面翻牌" : "等待翻牌";
+  if (phase === "discuss") return "讨论分歧 · 然后进入投票";
+  if (phase === "vote") return isGuesser ? "公开投票" : "等待投票结果";
+  if (phase === "quickContinue") return "继续猜一张？";
+  if (phase === "decide") return isClueGiver ? "从猜测者的选择里挑一张" : "等待提示者决定";
+  return "准备中";
+}
+
+function phaseBodyText(game, isClueGiver) {
+  const phase = game.phase;
+  if (game.status === "finished") return game.message;
+  if (phase === "clue") {
+    return isClueGiver
+      ? "输入一个词和数字。提示不能包含棋盘上任何词的字符，也不能混用中英文。"
+      : "等待提示者想好线索再继续。";
+  }
+  if (phase === "secretSelect") return "所有人同时秘密选一张。全员一致直接翻牌，部分一致进入投票，完全分歧由提示者决定。";
+  if (phase === "reveal") return "对抗模式下直接点击想翻的猫牌。";
+  if (phase === "discuss") return "出现分歧，大家快速讨论，然后由提示者开启公开投票。";
+  if (phase === "vote") return "猜测者从剩余猫牌里投票，提示者结算多数票。";
+  if (phase === "quickContinue") return "刚才猜中了。要不要带队再猜一张？提示者按投票或收手。";
+  if (phase === "decide") return "每个人选的都不一样，只能从这些选择里挑一张。";
+  return "";
+}
+
+function renderCluePanel(game, isClueGiver) {
+  const container = document.createElement("div");
+  container.className = "clue-form";
+  container.innerHTML = `
+    <label>
+      <span>提示词</span>
+      <input id="clueWord" type="text" maxlength="12" placeholder="例如：学校" ${isClueGiver ? "" : "disabled"} />
+    </label>
+    <label>
+      <span>数量</span>
+      <input id="clueCount" type="number" min="0" max="9" value="1" ${isClueGiver ? "" : "disabled"} />
+    </label>
+    <p class="clue-rules">单个词 + 0–9；不能包含棋盘词里任何字符；不能是谐音、拼音、英文翻译。</p>
+  `;
+  els.phaseInput.append(container);
+  if (isClueGiver) {
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.textContent = "公布提示";
+    submit.addEventListener("click", () => {
+      const word = container.querySelector("#clueWord").value;
+      const count = container.querySelector("#clueCount").value;
+      emitWithAck("submitClue", { word, count });
+    });
+    els.phaseActions.append(submit);
+
+    if (game.mode !== "semi_coop") {
+      const endBtn = document.createElement("button");
+      endBtn.type = "button";
+      endBtn.className = "ghost";
+      endBtn.textContent = "结束回合";
+      endBtn.addEventListener("click", () => emitWithAck("endTurn"));
+      els.phaseActions.append(endBtn);
+    }
+  }
+}
+
+function renderSecretSelectPanel(game, isGuesser) {
+  const container = document.createElement("div");
+  container.className = "phase-list";
+  game.players
+    .filter((player) => game.guesserIds.includes(player.id))
+    .forEach((player) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const picked = game.secretSelectionIds.includes(player.id);
+      const mine = player.id === roomState.meId;
+      const status = picked ? "已选" : "选择中";
+      row.innerHTML = `<span>${escapeHtml(player.name)}${mine ? " · 你" : ""}</span><strong>${status}</strong>`;
+      container.append(row);
+    });
+  els.phaseInput.append(container);
+  if (isGuesser) {
+    const hint = document.createElement("p");
+    hint.className = "muted";
+    const myPick = game.mySecretSelection;
+    hint.textContent = myPick
+      ? "你已经选择。还可以在倒计时内点击其他猫牌更换。"
+      : "点击下方棋盘里的一张猫牌提交秘密选择。";
+    els.phaseInput.append(hint);
+  }
+}
+
+function renderFreeRevealPanel(game, isClueGiver, isGuesser) {
+  if (!isGuesser) return;
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = "点击下方棋盘里的一张猫牌进行翻牌。";
+  els.phaseInput.append(hint);
+  if (isClueGiver || isGuesser) {
+    const endBtn = document.createElement("button");
+    endBtn.type = "button";
+    endBtn.className = "ghost";
+    endBtn.textContent = "结束回合";
+    endBtn.addEventListener("click", () => emitWithAck("endTurn"));
+    els.phaseActions.append(endBtn);
+  }
+}
+
+function renderDiscussPanel(game, isClueGiver) {
+  const reveal = game.revealedSelections || {};
+  const container = document.createElement("div");
+  container.className = "reveal-summary";
+  game.players
+    .filter((player) => game.guesserIds.includes(player.id))
+    .forEach((player) => {
+      const pick = reveal[player.id];
+      const row = document.createElement("div");
+      row.className = "reveal-row";
+      row.innerHTML = `<span>${escapeHtml(player.name)}</span><strong>${escapeHtml(pick?.cardName || "未选")}</strong>`;
+      container.append(row);
+    });
+  els.phaseInput.append(container);
+  if (isClueGiver) {
+    const voteBtn = document.createElement("button");
+    voteBtn.type = "button";
+    voteBtn.textContent = "开启公开投票";
+    voteBtn.addEventListener("click", () => emitWithAck("advanceToVote"));
+    els.phaseActions.append(voteBtn);
+  }
+}
+
+function renderVotePanel(game, isClueGiver, isGuesser) {
+  const openCards = game.cards.filter((card) => !card.revealed);
+  const tallies = new Map();
+  Object.values(game.votes).forEach((name) => {
+    tallies.set(name, (tallies.get(name) || 0) + 1);
+  });
+  const myVoteName = game.votes[roomState.meId] || null;
+  if (isGuesser) {
+    const list = document.createElement("div");
+    list.className = "vote-option-list";
+    openCards.forEach((card) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      const isMine = myVoteName === card.name;
+      button.className = `vote-option ${isMine ? "selected" : ""}`;
+      const tally = tallies.get(card.name) || 0;
+      button.innerHTML = `<strong>${escapeHtml(card.name)}</strong><span class="tally">${tally} 票</span>`;
+      button.addEventListener("click", () => {
+        selectedVoteCardId = card.id;
+        emitWithAck("castVote", { cardId: card.id });
+      });
+      list.append(button);
+    });
+    els.phaseInput.append(list);
+  } else {
+    const summary = document.createElement("div");
+    summary.className = "reveal-summary";
+    Array.from(tallies.entries()).forEach(([name, count]) => {
+      const row = document.createElement("div");
+      row.className = "reveal-row";
+      row.innerHTML = `<span>${escapeHtml(name)}</span><strong>${count} 票</strong>`;
+      summary.append(row);
+    });
+    if (!tallies.size) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "还没有人投票。";
+      summary.append(empty);
+    }
+    els.phaseInput.append(summary);
+  }
+
+  if (isClueGiver) {
+    const resolveBtn = document.createElement("button");
+    resolveBtn.type = "button";
+    resolveBtn.textContent = game.phase === "quickContinue" ? "确认继续猜这张" : "结算投票";
+    resolveBtn.disabled = Object.keys(game.votes).length === 0;
+    resolveBtn.addEventListener("click", () => emitWithAck("resolveVote"));
+    els.phaseActions.append(resolveBtn);
+
+    if (game.phase === "quickContinue") {
+      const stopBtn = document.createElement("button");
+      stopBtn.type = "button";
+      stopBtn.className = "ghost";
+      stopBtn.textContent = "收手，结束回合";
+      stopBtn.addEventListener("click", () => emitWithAck("declineContinue"));
+      els.phaseActions.append(stopBtn);
+    }
+  }
+}
+
+function renderDecidePanel(game, isClueGiver) {
+  const reveal = game.revealedSelections || {};
+  const summary = document.createElement("div");
+  summary.className = "reveal-summary";
+  Object.entries(reveal).forEach(([playerId, pick]) => {
+    const player = game.players.find((p) => p.id === playerId);
+    const row = document.createElement("div");
+    row.className = "reveal-row";
+    row.innerHTML = `<span>${escapeHtml(player?.name || "玩家")}</span><strong>${escapeHtml(pick.cardName)}</strong>`;
+    summary.append(row);
+  });
+  els.phaseInput.append(summary);
+  if (isClueGiver && game.decideOptions.length) {
+    const list = document.createElement("div");
+    list.className = "vote-option-list";
+    game.decideOptions.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "vote-option";
+      button.innerHTML = `<strong>${escapeHtml(option.cardName)}</strong><span class="tally">候选</span>`;
+      button.addEventListener("click", () => {
+        emitWithAck("decideFromSelections", { cardId: option.cardId });
+      });
+      list.append(button);
+    });
+    els.phaseActions.append(list);
+  }
+}
+
+function renderBoard(game, isClueGiver, isGuesser) {
   els.board.innerHTML = "";
+  const phase = game.phase;
   game.cards.forEach((card) => {
     const node = els.cardTemplate.content.firstElementChild.cloneNode(true);
     const type = card.revealedType || card.secretType;
     if (type) node.classList.add(`secret-${type}`);
     node.classList.toggle("secret-visible", Boolean(card.secretType));
     node.classList.toggle("revealed", card.revealed);
-    node.disabled = card.revealed || game.status !== "playing" || !isGuesser || !game.clue || game.mode === "semi_coop";
+    if (card.revealedType) node.classList.add(`reveal-${card.revealedType}`);
+
+    const mySecret = game.mySecretSelection;
+    if (mySecret === card.id && phase === "secretSelect") node.classList.add("picked");
+
+    const canClick = cardClickable(game, card, isClueGiver, isGuesser);
+    node.disabled = !canClick;
     node.querySelector(".secret-marker").textContent = labelForType(card.secretType);
+    node.querySelector(".selection-marker").textContent = mySecret === card.id ? "我的选择" : "";
     node.querySelector("img").src = `https://http.cat/${card.code}.jpg`;
     node.querySelector("img").alt = card.name;
     node.querySelector("strong").textContent = card.name;
     node.querySelector("small").textContent = card.hint;
-    node.addEventListener("click", () => emitWithAck("revealCard", { cardId: card.id }));
+    if (canClick) {
+      node.addEventListener("click", () => handleCardClick(game, card));
+    }
     els.board.append(node);
   });
 }
 
-function renderVotes(game, isClueGiver, isGuesser) {
-  const shouldShow = game.mode === "semi_coop" && game.status === "playing" && game.clue;
-  els.votePanel.classList.toggle("hidden", !shouldShow);
-  if (!shouldShow) return;
-
-  const myVote = Object.prototype.hasOwnProperty.call(game.votes, roomState.meId);
-  els.voteHint.textContent = isGuesser ? "选择一张猫牌投票。投票后由提示者结算多数票。" : "等待猜测者投票，提示者可以结算多数票。";
-  els.resolveVoteButton.disabled = !isClueGiver || Object.keys(game.votes).length === 0;
-  els.voteList.innerHTML = "";
-
-  if (isGuesser) {
-    game.cards.filter((card) => !card.revealed).forEach((card) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `vote-option ${selectedVoteCardId === card.id || game.votes[roomState.meId] === card.name ? "selected" : ""}`;
-      button.textContent = card.name;
-      button.disabled = myVote && game.votes[roomState.meId] !== card.name;
-      button.addEventListener("click", () => {
-        selectedVoteCardId = card.id;
-        emitWithAck("castVote", { cardId: card.id });
-      });
-      els.voteList.append(button);
-    });
+function cardClickable(game, card, isClueGiver, isGuesser) {
+  if (game.status !== "playing") return false;
+  if (card.revealed) return false;
+  const phase = game.phase;
+  if (phase === "secretSelect") return isGuesser;
+  if (phase === "reveal") {
+    if (game.mode === "semi_coop") return false;
+    return isGuesser && Boolean(game.clue);
   }
+  return false;
+}
 
-  Object.entries(game.votes).forEach(([playerId, cardName]) => {
-    const player = game.players.find((item) => item.id === playerId);
-    const item = document.createElement("div");
-    item.className = "score-row";
-    item.innerHTML = `<span>${escapeHtml(player?.name || "玩家")}</span><strong>${escapeHtml(cardName)}</strong>`;
-    els.voteList.append(item);
-  });
+function handleCardClick(game, card) {
+  const phase = game.phase;
+  if (phase === "secretSelect") {
+    emitWithAck("submitSelection", { cardId: card.id });
+    return;
+  }
+  if (phase === "reveal") {
+    emitWithAck("revealCard", { cardId: card.id });
+  }
 }
 
 function renderScores(game) {
@@ -233,18 +523,18 @@ function renderScores(game) {
     const row = document.createElement("div");
     row.className = "score-row";
     const teamTag = player.team ? `<span class="tag ${player.team}">${player.team === "red" ? "红队" : "蓝队"}</span>` : "";
-    const roleName = player.role === "spymaster" || player.role === "clue_giver" ? "提示者" : "猜测者";
+    const roleLabel = player.role === "spymaster" || player.role === "clue_giver" ? "提示者" : "猜测者";
     const statusTag = player.connected ? "" : '<span class="tag">断线</span>';
-    row.innerHTML = `<span>${escapeHtml(player.name)} ${teamTag}<span class="tag">${roleName}</span>${statusTag}</span><strong>${player.score}</strong>`;
+    row.innerHTML = `<span>${escapeHtml(player.name)} ${teamTag}<span class="tag">${roleLabel}</span>${statusTag}</span><strong>${player.score}</strong>`;
     els.scoreList.append(row);
   });
 }
 
 function makeTurnLabel(game, clueGiver) {
   if (game.mode === "team_vs_team") {
-    return `${game.currentTeam === "red" ? "红队" : "蓝队"}回合：${clueGiver?.name || "等待"}提示`;
+    return `${game.currentTeam === "red" ? "红队" : "蓝队"}回合`;
   }
-  return `第 ${game.round} 回合：${clueGiver?.name || "等待"}提示`;
+  return `第 ${game.round} 回合 · ${clueGiver?.name || "等待"} 出牌`;
 }
 
 function makeViewerHint(game, me, clueGiver) {
@@ -256,24 +546,45 @@ function makeViewerHint(game, me, clueGiver) {
 }
 
 function makeModeRules(mode) {
-  if (mode === "duet_coop") return "合作模式：两人轮流给提示，在限定回合内找出所有目标猫。点到失败猫会直接失败。";
-  if (mode === "semi_coop") return "半合作模式：大家共同找目标猫，提示者轮换；猜测者投票，提示者结算。";
-  return "阵营模式：红蓝轮流行动，各队提示者给线索，先找齐己方猫获胜，点到失败猫立刻输。";
+  if (mode === "duet_coop") return "2 人合作：轮流给提示，在限定回合内找出所有目标猫。点到失败猫直接失败。";
+  if (mode === "semi_coop") return "3–5 人半合作：同步揭示 → 投票 / 决定 → 翻牌。个人分只在团队胜利时结算。";
+  return "6–8 人阵营对抗：红蓝轮流行动，先找齐己方猫获胜，点到失败猫立刻输。";
 }
 
-function getMode(count) {
-  if (count === 2) return "duet_coop";
-  if (count >= 3 && count <= 5) return "semi_coop";
-  if (count >= 6 && count <= 8) return "team_vs_team";
-  return null;
+function getAllowedModes(count) {
+  if (count === 2) return ["duet_coop"];
+  if (count >= 3 && count <= 4) return ["semi_coop"];
+  if (count === 5 || count === 6) return ["semi_coop", "team_vs_team"];
+  if (count >= 7 && count <= 8) return ["team_vs_team"];
+  return [];
 }
 
-function getModeName(count) {
-  return {
-    duet_coop: "2人合作解谜",
-    semi_coop: "3-5人半合作",
-    team_vs_team: "6-8人阵营对抗",
-  }[getMode(count)] || "需要 2-8 人";
+function startTimer(endsAt) {
+  stopTimer();
+  if (!endsAt) {
+    els.timerBarFill.style.width = "0%";
+    return;
+  }
+  const start = Date.now();
+  const total = endsAt - start;
+  if (total <= 0) {
+    els.timerBarFill.style.width = "0%";
+    return;
+  }
+  timerInterval = setInterval(() => {
+    const remaining = endsAt - Date.now();
+    const pct = Math.max(0, Math.min(1, remaining / total));
+    els.timerBarFill.style.width = `${(pct * 100).toFixed(1)}%`;
+    els.timerBarFill.classList.toggle("warning", pct < 0.25);
+    if (remaining <= 0) stopTimer();
+  }, 200);
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
 }
 
 function labelForType(type) {
